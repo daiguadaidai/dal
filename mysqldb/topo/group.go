@@ -9,13 +9,15 @@ import (
 )
 
 type MySQLGroup struct {
-	sync.Mutex
+	sync.RWMutex
 	GNO              int // 组号
+	DBName           string
 	Master           string
 	CandidateMasters map[string]struct{} // 候选 master
 	Slaves           map[string]struct{} // 保存了所有的 slave 地址
 	Nodes            map[string]*MySQLNode
-	TotalReadWeight  int // 总的读权重
+	TotalReadWeight  int              // 总的读权重
+	ShardNumMap      map[int]struct{} // 该组用于哪些分片
 }
 
 func (this *MySQLGroup) String() string {
@@ -86,6 +88,8 @@ func (this *MySQLGroup) GetReadNode() (*MySQLNode, error) {
 	var incrWeight int // 叠加权重, 用于比较是不是选用该节点
 	randWeight := rand.Intn(this.TotalReadWeight)
 	// 叠加权重
+	this.RLock()
+	defer this.RUnlock()
 	for _, node := range this.Nodes {
 		if node.ReadWeight < 1 { // 没有设置权重, 跳过该节点
 			continue
