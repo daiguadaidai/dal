@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/daiguadaidai/dal/config"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -25,7 +26,10 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "dal",
 	Short: "MySQL访问中间件",
-	Long:  `MySQL访问中间件`,
+	Long: `MySQL访问中间件
+Example:
+    ./dal --config=dal.toml
+`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
@@ -53,6 +57,14 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "./dal.toml", "配置文件")
 }
 
+var cfg *config.Config
+
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
+	var err error
+	cfg, err = config.NewConfig(cfgFile)
+	if err != nil {
+		fmt.Printf("解析配置文件错误: %s\n", err.Error())
+		os.Exit(1)
+	}
 }

@@ -1,0 +1,33 @@
+# dal配置信息
+[dal]
+listen_host = "0.0.0.0"
+listen_port = 13306
+username = ""
+password = ""
+database = ""
+
+# 直接指定后端需要链接的数据库
+[backend_mysql]
+username = "root"
+password = "root"
+host = "127.0.0.1"
+port = 3306
+database = "employees"
+
+# 后端链接的数据库信息从mysql里面获取, 如果有指定 [mysql_target] 则以 [mysql_target] 为准
+[mysql_meta]
+username = "root"
+password = "root"
+host = "127.0.0.1"
+port = 3306
+database = "dal"
+timeout = 10
+charset="utf8mb4"
+max_open_conns=1
+max_idel_conns=1
+
+[log]
+# path="/data0/dal/logs"    # 日志路径, 没有填写打印到控制台
+level="debug"
+file_size=1073741824    # 每个日志文件的大小
+file_keep_size=10    # 历史日志文件保存个数
