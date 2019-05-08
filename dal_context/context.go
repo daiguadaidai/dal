@@ -7,6 +7,7 @@ import (
 	"github.com/daiguadaidai/dal/dao"
 	"github.com/daiguadaidai/dal/mysqldb/topo"
 	"github.com/daiguadaidai/peep"
+	"strings"
 )
 
 type DalContext struct {
@@ -84,6 +85,8 @@ func setClusterFromDalConfig(cfg *config.DalConfig, cluster *topo.MySQLCluster) 
 // 设置group, 通过配置信息
 func setClusterGroupFromBackendConfig(cfgs []*config.BackendConfig, cluster *topo.MySQLCluster) error {
 	group := topo.NewMySQLGroup("", 0)
+	dbNames := make([]string, 0)
+	var beforeDBName string
 	for _, backend := range cfgs {
 		var password string
 		// 设置密码
@@ -103,7 +106,15 @@ func setClusterGroupFromBackendConfig(cfgs []*config.BackendConfig, cluster *top
 		if err := group.AddNode(node); err != nil {
 			return err
 		}
+
+		// 添加dbName
+		if beforeDBName != backend.Database {
+			dbNames = append(dbNames, backend.Database)
+			beforeDBName = backend.Database
+		}
 	}
+	// 设置group 中的dbname group中的dbname可能会显示多个不主要是应为node中可能会有db不一样. DNName: db1, db2, db3
+	group.DBName = strings.Join(dbNames, ", ")
 
 	return nil
 }
