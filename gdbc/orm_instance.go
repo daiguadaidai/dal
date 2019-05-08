@@ -7,7 +7,7 @@ import (
 	"github.com/jinzhu/gorm"
 )
 
-func GetDB(cfg config.MySQLConfig) (*gorm.DB, error) {
+func GetDB(cfg *config.MySQLConfig) (*gorm.DB, error) {
 	db, err := gorm.Open("mysql", cfg.GetDataSource())
 	if err != nil { // 打开数据库失败
 		return nil, fmt.Errorf("打开数据库失败 %s:%d , %v", cfg.Host, cfg.Port, err)

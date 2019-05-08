@@ -35,7 +35,7 @@ func NewDBConfig(
 	password string,
 	dbName string,
 	charset string,
-	isAutoCommit bool,
+	AutoCommit bool,
 ) *dbConfig {
 	cfg := new(dbConfig)
 	// 初始化 host
@@ -79,10 +79,10 @@ func NewDBConfig(
 	}
 
 	// 初始化 autotommit
-	if !isAutoCommit {
+	if !AutoCommit {
 		seelog.Warnf("指定 autocommit=0. (一般应用使用的是 autocommit=1, 请谨慎考虑.)")
 	}
-	cfg.IsAutoCommit = isAutoCommit
+	cfg.IsAutoCommit = AutoCommit
 
 	cfg.DBName = dbName
 
@@ -122,11 +122,11 @@ func Open(
 	password string,
 	DBName string,
 	charset string,
-	isAutoCommit bool,
+	AutoCommit bool,
 	minOpen int32,
 	maxOpen int32,
 ) (*MySQLPool, error) {
-	cfg := NewDBConfig(host, port, username, password, DBName, charset, isAutoCommit)
+	cfg := NewDBConfig(host, port, username, password, DBName, charset, AutoCommit)
 
 	p := new(MySQLPool)
 	p.cfg = cfg

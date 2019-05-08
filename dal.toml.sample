@@ -7,12 +7,30 @@ password = ""
 database = ""
 
 # 直接指定后端需要链接的数据库
-[backend_mysql]
+[[backend]]
 username = "root"
 password = "root"
 host = "127.0.0.1"
 port = 3306
 database = "employees"
+charset = "utf8mb4"
+auto_commit = true # true/false
+role = 1 # 角色 1.master, 2.slave
+is_candidate = true # 是否是候选master true/false
+read_weight = 1 # 读权重
+
+# 直接指定后端需要链接的数据库
+[[backend]]
+username = "root"
+password = "root"
+host = "127.0.0.1"
+port = 3306
+database = "employees"
+charset = "utf8mb4"
+auto_commit = true # true/false
+role = 2 # 角色 1.master, 2.slave
+is_candidate = true # 是否是候选master true/false
+read_weight = 1 # 读权重
 
 # 后端链接的数据库信息从mysql里面获取, 如果有指定 [mysql_target] 则以 [mysql_target] 为准
 [mysql_meta]

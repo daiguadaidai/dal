@@ -3,6 +3,7 @@ package topo
 import (
 	"fmt"
 	"github.com/cihub/seelog"
+	"github.com/daiguadaidai/dal/utils/types"
 	"math/rand"
 	"strings"
 	"sync"
@@ -18,6 +19,17 @@ type MySQLGroup struct {
 	Nodes            map[string]*MySQLNode
 	TotalReadWeight  int              // 总的读权重
 	ShardNumMap      map[int]struct{} // 该组用于哪些分片
+}
+
+func NewMySQLGroup(dbName string, gno int) *MySQLGroup {
+	return &MySQLGroup{
+		DBName:           dbName,
+		GNO:              gno,
+		CandidateMasters: make(map[string]struct{}),
+		Slaves:           make(map[string]struct{}),
+		Nodes:            make(map[string]*MySQLNode),
+		ShardNumMap:      make(map[int]struct{}),
+	}
 }
 
 func (this *MySQLGroup) String() string {
@@ -105,7 +117,48 @@ func (this *MySQLGroup) GetReadNode() (*MySQLNode, error) {
 		randWeight, this.TotalReadWeight, incrWeight)
 }
 
+// 获取写节点
 func (this *MySQLGroup) GetWriteNode() (*MySQLNode, bool) {
+	this.RLock()
+	defer this.RUnlock()
+
 	master, ok := this.Nodes[this.Master]
 	return master, ok
+}
+
+// 通过指定key获取节点
+func (this *MySQLGroup) GetNode(key string) (*MySQLNode, bool) {
+	this.RLock()
+	defer this.RUnlock()
+
+	node, ok := this.Nodes[key]
+	return node, ok
+}
+
+func (this *MySQLGroup) AddNode(node *MySQLNode) error {
+	if _, ok := this.GetNode(node.Addr()); ok {
+		return fmt.Errorf("节点 %s 已经存在. 不允许重复添加", node.Addr())
+	}
+	// 判断是否是master
+	if node.Role == types.MYSQL_ROLE_MASTER && len(this.Master) > 0 && node.Addr() != this.Master {
+		return fmt.Errorf("已经存在master:%s, 不允许添加新master:%s", this.Master, node.Addr())
+	}
+
+	this.Lock()
+	defer this.Unlock()
+
+	// 添加节点
+	this.Nodes[node.Addr()] = node
+
+	// 添加slave
+	if node.Role == types.MYSQL_ROLE_SLAVE {
+		this.Slaves[node.Addr()] = struct{}{}
+	}
+
+	// 添加候选master
+	if node.IsCandidate {
+		this.CandidateMasters[node.Addr()] = struct{}{}
+	}
+
+	return nil
 }

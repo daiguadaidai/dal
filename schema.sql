@@ -37,7 +37,7 @@ CREATE TABLE `nodes` (
     `db_name` varchar(150) NOT NULL DEFAULT '' COMMENT '使用的数据库名称',
     `read_weight` int(11) NOT NULL DEFAULT '0' COMMENT '读权重',
     `charset` varchar(50) NOT NULL DEFAULT 'utf8mb4' COMMENT '节点字符集',
-    `is_auto_commit` tinyint(4) NOT NULL DEFAULT '1' COMMENT '是否是自动提交',
+    `auto_commit` tinyint(4) NOT NULL DEFAULT '1' COMMENT '是否是自动提交',
     `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),

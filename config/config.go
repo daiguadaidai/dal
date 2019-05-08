@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/BurntSushi/toml"
+	"github.com/daiguadaidai/dal/utils/types"
 )
 
 const (
@@ -9,10 +10,10 @@ const (
 )
 
 type Config struct {
-	DalConfig    *DalConfig   `toml:"dal"`
-	BackendMySQL *MySQLConfig `toml:"backend_mysql"`
-	MySQLMeta    *MySQLConfig `toml:"mysql_meta"`
-	LC           *LogConfig   `toml:"log"`
+	DalConfig *DalConfig       `toml:"dal"`
+	Backends  []*BackendConfig `toml:"backend"`
+	MySQLMeta *MySQLConfig     `toml:"mysql_meta"`
+	LC        *LogConfig       `toml:"log"`
 }
 
 var cfg Config
@@ -27,7 +28,14 @@ func NewConfig(fPath string) (*Config, error) {
 	return &cfg, nil
 }
 
-// 是否配置文件总指定后端MySQL
-func (this *Config) IsSetBackend() bool {
-	return len(this.BackendMySQL.Host) > 0 && this.BackendMySQL.Port > 0 && len(this.BackendMySQL.Username) > 0
+// 获取master个数
+func (this *Config) BakendMasterCount() int {
+	var count int
+	for _, backend := range this.Backends {
+		if backend.Role == types.MYSQL_ROLE_MASTER {
+			count++
+		}
+	}
+
+	return count
 }
