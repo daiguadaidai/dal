@@ -59,3 +59,12 @@ func (this *MySQLNode) Addr() string {
 func (this *MySQLNode) ResetReadWeight(weight int) {
 	this.ReadWeight = weight
 }
+
+// pool 公用
+func (this *MySQLNode) Clone() *MySQLNode {
+	node := NewMySQLNode(this.DBName, this.Host, this.Port, this.Username, this.Password, this.Charset,
+		this.AutoCommit, this.IsCandidate, this.ReadWeight, this.Role, this.MinOpen, this.MaxOpen)
+	node.Pool = this.Pool
+
+	return node
+}

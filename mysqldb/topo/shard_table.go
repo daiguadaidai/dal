@@ -53,8 +53,8 @@ func (this *ShardTable) Clone() *ShardTable {
 }
 
 type ShardTableMapInstance struct {
-	ShardTableMaps []*sync.Map
-	ShardTableCnt  int
+	ShardTables   []*sync.Map
+	ShardTableCnt int
 }
 
 func NewShardTableMapInstance(mapCnt int) *ShardTableMapInstance {
@@ -64,8 +64,8 @@ func NewShardTableMapInstance(mapCnt int) *ShardTableMapInstance {
 	}
 
 	return &ShardTableMapInstance{
-		ShardTableMaps: stMaps,
-		ShardTableCnt:  0,
+		ShardTables:   stMaps,
+		ShardTableCnt: 0,
 	}
 }
 
@@ -76,11 +76,11 @@ func (this *ShardTableMapInstance) AddShardTable(schema, table string, cols ...s
 		return err
 	}
 
-	for i, stMap := range this.ShardTableMaps {
+	for i, stMap := range this.ShardTables {
 		stMap.Store(st.TableName(), st.Clone())
 		seelog.Debugf("shard table:%s.%s 成功添加到第%d个实例中", schema, table, i)
 	}
-	seelog.Infof("表:%s.%s. 成功添加到每一个shard table实例中. shard Table实例一共有 %d 个", schema, table, len(this.ShardTableMaps))
+	seelog.Infof("表:%s.%s. 成功添加到每一个shard table实例中. shard Table实例一共有 %d 个", schema, table, len(this.ShardTables))
 
 	return nil
 }
@@ -88,8 +88,8 @@ func (this *ShardTableMapInstance) AddShardTable(schema, table string, cols ...s
 // 获取shard表
 func (this *ShardTableMapInstance) GetShardTable(schema, table string) (*ShardTable, bool) {
 	// 随机计算出使用哪一个map实例
-	mapSlot := rand.Intn(len(this.ShardTableMaps) - 1)
-	stMap := this.ShardTableMaps[mapSlot]
+	mapSlot := rand.Intn(len(this.ShardTables) - 1)
+	stMap := this.ShardTables[mapSlot]
 
 	key := fmt.Sprintf("%s.%s", schema, table)
 	st, ok := stMap.Load(key)

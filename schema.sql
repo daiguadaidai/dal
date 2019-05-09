@@ -40,11 +40,13 @@ CREATE TABLE `nodes` (
     `auto_commit` tinyint(4) NOT NULL DEFAULT '1' COMMENT '是否是自动提交',
     `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `min_open` int(11) NOT NULL DEFAULT '1' COMMENT '连接池打开最小链接数',
+    `max_open` int(11) NOT NULL DEFAULT '4' COMMENT '连接池打开最大链接数',
     PRIMARY KEY (`id`),
     KEY `idx_group_id` (`group_id`),
     KEY `idx_username` (`username`),
     KEY `idx_host_port` (`host`,`port`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COMMENT='节点名称';
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COMMENT='节点名称'
 
 CREATE TABLE `shard_tables` (
     `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '自增ID',
