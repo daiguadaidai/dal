@@ -48,10 +48,12 @@ func getClusterInstance(cfg *config.Config) (*topo.ClusterInstance, error) {
 	} else {
 		return nil, fmt.Errorf("没有指定启动dal信息, 也没有指定启动的dal名称, 从而无法从数据库中获取到dal信息")
 	}
+	// cluster 重新设置 分片好对应哪个group
+	cluster.InitShardGroup()
 	seelog.Infof("成功获取到dal启动信息. %s", cluster.Summary())
 
 	// 创建cluster instance
-	clusterInstance := topo.NewClusterInstance(16, cluster)
+	clusterInstance := topo.NewClusterInstance(cfg.DalConfig.ClusterInstanceNum, cluster)
 
 	return clusterInstance, nil
 }
@@ -189,7 +191,7 @@ func setClusterGroupFromDB(dbConfig *config.MySQLConfig, cluster *topo.MySQLClus
 	groupMap := make(map[int64]*topo.MySQLGroup)
 	for _, group := range mGroups {
 		mysqlGroup := topo.NewMySQLGroup(group.DBName, group.GNO)
-		mysqlGroup.SetShardNumMapByStr(group.Shards)
+		mysqlGroup.SetShardNoMapByStr(group.Shards)
 		groupMap[group.ID] = mysqlGroup
 	}
 
@@ -224,9 +226,6 @@ func setClusterGroupFromDB(dbConfig *config.MySQLConfig, cluster *topo.MySQLClus
 	for _, group := range groupMap {
 		cluster.AddGroup(group)
 	}
-
-	// cluster 重新设置 分片好对应哪个group
-	cluster.InitShardGroup()
 
 	return nil
 }

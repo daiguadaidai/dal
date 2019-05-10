@@ -16,7 +16,7 @@ func NewGroupDao(cfg *config.MySQLConfig) *GroupDao {
 
 // 通过cluster名称获取cluster
 func (this *GroupDao) FindGrupByClusterName(name string) ([]*models.Group, error) {
-	sql := `
+	sqlStr := `
     SELECT g.*
     FROM groups AS g
     LEFT JOIN clusters AS c
@@ -30,7 +30,7 @@ func (this *GroupDao) FindGrupByClusterName(name string) ([]*models.Group, error
 	defer db.Close()
 
 	var groups []*models.Group
-	if err := db.Raw(sql, name).Scan(groups).Error; err != nil {
+	if err := db.Raw(sqlStr, name).Find(&groups).Error; err != nil {
 		return nil, err
 	}
 

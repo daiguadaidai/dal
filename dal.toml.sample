@@ -2,9 +2,11 @@
 [dal]
 listen_host = "0.0.0.0"
 listen_port = 13306
-username = ""
-password = ""
-database = ""
+username = "root" # dal 对外提供的用户名
+password = "123456" # dal 对外提供的密码
+database = "test" # dal对外提供的数据库
+shard_table_instance_num = 8 # 存放分表信息的资源个数, 思想来源于MySQL 多instance
+cluster_instance_num = 8 # cluster相关资源个数, 思想来源于MySQL 多instance
 
 # 直接指定后端需要链接的数据库
 [[backend]]

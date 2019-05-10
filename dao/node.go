@@ -32,7 +32,7 @@ func (this *NodeDao) FindNodeByClusterName(name string) ([]*models.Node, error) 
 	defer db.Close()
 
 	var nodes []*models.Node
-	if err := db.Raw(sql, name).Scan(nodes).Error; err != nil {
+	if err := db.Raw(sql, name).Find(&nodes).Error; err != nil {
 		return nil, err
 	}
 

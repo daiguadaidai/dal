@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 func GetBytes(data interface{}) ([]byte, error) {
@@ -46,4 +48,54 @@ func KindIntToByte(num interface{}) ([]byte, error) {
 		return nil, err
 	}
 	return buffer.Bytes(), nil
+}
+
+/* 分片好字符串转化为map
+ * Example:
+ * str: 1,2,3,4, 10-15, 20-23-20-27
+ * return: map[1:{} 2:{} 3:{} 4:{} 10:{} 11:{} 12:{} 13:{} 14:{} 15:{} 20:{} 21:{} 22:{} 23:{} 24:{} 25:{} 26:{} 27:{}]
+ */
+func ShardNoStrsToIntMap(str string) map[int]struct{} {
+	shardNoMap := make(map[int]struct{})
+
+	str = strings.TrimSpace(str)
+	if len(str) == 0 {
+		return shardNoMap
+	}
+
+	items := strings.Split(str, ",")
+	for _, item := range items {
+		numStrs := strings.Split(strings.TrimSpace(item), "-")
+		if len(numStrs) == 1 {
+			num, err := strconv.ParseInt(strings.TrimSpace(numStrs[0]), 10, 64)
+			if err != nil {
+				continue
+			}
+			shardNoMap[int(num)] = struct{}{}
+
+		} else if len(numStrs) > 1 {
+			min, err := strconv.ParseInt(strings.TrimSpace(numStrs[0]), 10, 64)
+			if err != nil {
+				continue
+			}
+			var max int64
+			for _, numStr := range numStrs {
+				num, err := strconv.ParseInt(strings.TrimSpace(numStr), 10, 64)
+				if err != nil {
+					continue
+				}
+				if num < min {
+					min = num
+				}
+				if num > max {
+					max = num
+				}
+			}
+			for i := int(min); i <= int(max); i++ {
+				shardNoMap[i] = struct{}{}
+			}
+		}
+	}
+
+	return shardNoMap
 }

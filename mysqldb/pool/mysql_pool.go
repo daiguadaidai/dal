@@ -95,8 +95,8 @@ func (this *dbConfig) addr() string {
 }
 
 func (this *dbConfig) String() string {
-	return fmt.Sprintf("host: %s, port: %d, username: %s, password: %s, charset: %s, isAutoCommit: %t",
-		this.Host, this.Port, this.Username, this.Password, this.Charset, this.IsAutoCommit)
+	return fmt.Sprintf("host: %s, port: %d, username: %s, password: ******, charset: %s, isAutoCommit: %t",
+		this.Host, this.Port, this.Username, this.Charset, this.IsAutoCommit)
 }
 
 const (

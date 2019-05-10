@@ -23,7 +23,8 @@ func NewConfig(fPath string) (*Config, error) {
 		return nil, err
 	}
 
-	cfg.LC.SupDefault() // 补充日志配置文件默认值
+	cfg.DalConfig.SupDefault() // 补充dal配置文件信息
+	cfg.LC.SupDefault()        // 补充日志配置文件默认值
 
 	return &cfg, nil
 }

@@ -11,7 +11,8 @@ import (
  */
 type Crc32Hash struct{}
 
-func (this *Crc32Hash) GetShardNum(shardCNT int, cols ...interface{}) (int, error) {
+// 一共有分几片计算出 所在分片号
+func (this *Crc32Hash) GetShardNo(shardCNT int, cols ...interface{}) (int, error) {
 	if len(cols) == 0 {
 		return -1, fmt.Errorf("指定字段个数为0, 无法获取到shard值")
 	}

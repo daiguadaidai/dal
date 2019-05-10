@@ -23,7 +23,7 @@ func (this *ClusterDao) GetClusterByName(name string) (*models.Cluster, error) {
 	defer db.Close()
 
 	cluster := new(models.Cluster)
-	if err := db.Model(cluster).Where("name=?", name).Scan(cluster).Error; err != nil {
+	if err := db.Model(cluster).Where("name=?", name).First(cluster).Error; err != nil {
 		return nil, err
 	}
 

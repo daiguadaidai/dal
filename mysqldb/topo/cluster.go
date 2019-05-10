@@ -46,8 +46,13 @@ func (this *MySQLCluster) InitShardGroup() {
 
 	// 需要生成一个临时的tmpGroup主要是为了防止有死锁的情况, 在操作group的时候相关资源也是有加锁的
 	for _, group := range tmpGroups {
-		shardNumMap := group.GetShardNumMap()
-		for key, _ := range shardNumMap {
+		shardNoMap := group.GetShardNoMap()
+		// 如果group没有分片信息 默认设置分片信息为 -1
+		if len(shardNoMap) == 0 {
+			shardGroupMap[-1] = group.GNO
+			continue
+		}
+		for key, _ := range shardNoMap {
 			shardGroupMap[key] = group.GNO
 		}
 	}
@@ -132,23 +137,4 @@ func (this *MySQLCluster) Clone() *MySQLCluster {
 	cluster.InitShardGroup()
 
 	return cluster
-}
-
-// 保存多个cluster元数据实例
-type ClusterInstance struct {
-	Clusters   []*MySQLCluster
-	ClusterCnt int
-}
-
-func NewClusterInstance(clusterCnt int, cluster *MySQLCluster) *ClusterInstance {
-	clusterInstance := &ClusterInstance{
-		Clusters:   make([]*MySQLCluster, clusterCnt),
-		ClusterCnt: clusterCnt,
-	}
-
-	for i := 0; i < clusterCnt; i++ {
-		clusterInstance.Clusters[i] = cluster.Clone()
-	}
-
-	return clusterInstance
 }
