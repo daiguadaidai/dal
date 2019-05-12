@@ -11,6 +11,8 @@ import (
 )
 
 type DalContext struct {
+	Cfg                *config.Config
+	ServerCtx          *ServerContext
 	ShardTableInstance *topo.ShardTableMapInstance
 	ClusterInstance    *topo.ClusterInstance
 }
@@ -19,38 +21,49 @@ type DalContext struct {
 func NewDalContext(cfg *config.Config) (*DalContext, error) {
 	dalContext := new(DalContext)
 
-	// 1. 设置cluster instance
+	// 1. 设置配置信息
+	dalContext.Cfg = cfg
+
+	// 2. 获取server Context
+	serverCtx, err := getServerContext(cfg)
+	if err != nil {
+		return nil, err
+	}
+	dalContext.ServerCtx = serverCtx
+	seelog.Infof("成功获取到dal启动信息. %s", serverCtx.Summary())
+
+	// 3. 设置cluster instance
 	clusterInstance, err := getClusterInstance(cfg)
 	if err != nil {
 		return nil, err
 	}
 	dalContext.ClusterInstance = clusterInstance
+	seelog.Infof("成功获取到dal集群信息")
 
-	// 2. 设置 shardTable instance
+	// 4. 设置 shardTable instance
 
 	return dalContext, nil
 }
 
-// 获取 cluster信息
+// 获取 cluster instance信息
 func getClusterInstance(cfg *config.Config) (*topo.ClusterInstance, error) {
 	cluster := topo.DefaultMySQLCluster()
 	if cfg.DalConfig.IsSetDal() {
-		seelog.Debugf("dal元数据信息从配置文件中获取")
+		seelog.Debugf("集群信息从dal配置文件中获取")
 		// 通过配置文件设置dal元数据信息
 		if err := setClusterFromConfig(cfg, cluster); err != nil {
 			return nil, err
 		}
-	} else if cfg.DalConfig.IsSetName() { // 判断是否指定了dal名称, 如果指定则从数据中获取
-		seelog.Debugf("dal元数据信息从数据库中获取, dal名称:%s", cfg.DalConfig.Name)
+	} else if cfg.DalConfig.IsSetName() { // 判断是否执行了dal名称, 是则从数据库中获取集群信息
+		seelog.Debugf("集群信息从数据库中获取")
 		if err := setClusterFromDB(cfg.DalConfig.Name, cfg.MySQLMeta, cluster); err != nil {
 			return nil, err
 		}
 	} else {
-		return nil, fmt.Errorf("没有指定启动dal信息, 也没有指定启动的dal名称, 从而无法从数据库中获取到dal信息")
+		return nil, fmt.Errorf("没有指定启动dal信息, 也没有指定启动的dal名称, 从而无法从数据库中获取到集群信息")
 	}
 	// cluster 重新设置 分片好对应哪个group
 	cluster.InitShardGroup()
-	seelog.Infof("成功获取到dal启动信息. %s", cluster.Summary())
 
 	// 创建cluster instance
 	clusterInstance := topo.NewClusterInstance(cfg.DalConfig.ClusterInstanceNum, cluster)
@@ -60,10 +73,7 @@ func getClusterInstance(cfg *config.Config) (*topo.ClusterInstance, error) {
 
 // 从配置文件中获取dal元数据信息
 func setClusterFromConfig(cfg *config.Config, cluster *topo.MySQLCluster) error {
-	// 1. 设置dql基本信息
-	setClusterMetaFromDalConfig(cfg.DalConfig, cluster)
-
-	// 2. 设置 group 信息
+	// 1. 设置 group 信息
 	if cfg.BakendMasterCount() > 1 {
 		return fmt.Errorf("配置文件中有多个master请检测")
 	}
@@ -72,22 +82,6 @@ func setClusterFromConfig(cfg *config.Config, cluster *topo.MySQLCluster) error 
 	}
 
 	return nil
-}
-
-// 从配置文件中设置 MySQLCluster 信息
-func setClusterMetaFromDalConfig(cfg *config.DalConfig, cluster *topo.MySQLCluster) {
-	cluster.ListenHost = cfg.ListenHost
-	cluster.ListenPort = cfg.ListenPort
-	cluster.DBName = cfg.Database
-	cluster.Username = cfg.Username
-	// 设置密码
-	if pwd, err := peep.Decrypt(cfg.Password); err != nil {
-		seelog.Warnf("dal配置文件中dal登录密码解密失败. 使用为解密前的密码. %s", err.Error())
-		cluster.Password = cfg.Password
-	} else {
-		cluster.Password = pwd
-	}
-	cluster.Name = cfg.Name
 }
 
 // 设置group, 通过配置信息
@@ -130,46 +124,19 @@ func setClusterGroupFromBackendConfig(cfgs []*config.BackendConfig, cluster *top
 }
 
 // 从数据库中获取cluster信息
-func setClusterFromDB(clusterName string, dbConfig *config.MySQLConfig, cluster *topo.MySQLCluster) error {
-	// 设置cluster基本信息
-	if err := setClusterMetaFromDB(clusterName, dbConfig, cluster); err != nil {
-		return err
-	}
-
+func setClusterFromDB(serverName string, dbConfig *config.MySQLConfig, cluster *topo.MySQLCluster) error {
 	// 设置cluster group信息
-	if err := setClusterGroupFromDB(dbConfig, cluster); err != nil {
+	if err := setClusterGroupFromDB(dbConfig, cluster, serverName); err != nil {
 		return err
 	}
-
-	return nil
-}
-
-// 从数据库中获取cluster信息并且赋值给 MySQLCluster
-func setClusterMetaFromDB(clusterName string, dbConfig *config.MySQLConfig, cluster *topo.MySQLCluster) error {
-	mCluster, err := dao.NewClusterDao(dbConfig).GetClusterByName(clusterName)
-	if err != nil {
-		return err
-	}
-	cluster.ListenHost = mCluster.ListenHost
-	cluster.ListenPort = mCluster.ListenPort
-	cluster.DBName = mCluster.DBName
-	cluster.Username = mCluster.Username
-	// 设置密码
-	if pwd, err := peep.Decrypt(mCluster.Password); err != nil {
-		seelog.Warnf("dal配置文件中dal登录密码解密失败. 使用为解密前的密码. %s", err.Error())
-		cluster.Password = mCluster.Password
-	} else {
-		cluster.Password = pwd
-	}
-	cluster.Name = mCluster.Name
 
 	return nil
 }
 
 // 从数据库中获取group信息设置到cluster中
-func setClusterGroupFromDB(dbConfig *config.MySQLConfig, cluster *topo.MySQLCluster) error {
+func setClusterGroupFromDB(dbConfig *config.MySQLConfig, cluster *topo.MySQLCluster, serverName string) error {
 	// 获取数据库中的group元数据信息
-	mGroups, err := dao.NewGroupDao(dbConfig).FindGrupByClusterName(cluster.Name)
+	mGroups, err := dao.NewGroupDao(dbConfig).FindGrupByServerName(serverName)
 	if err != nil {
 		return fmt.Errorf("从数据库获取group元数据失败. %s", err)
 	}
@@ -178,7 +145,7 @@ func setClusterGroupFromDB(dbConfig *config.MySQLConfig, cluster *topo.MySQLClus
 	}
 
 	// 获取数据库中的所有Node信息
-	mNodes, err := dao.NewNodeDao(dbConfig).FindNodeByClusterName(cluster.Name)
+	mNodes, err := dao.NewNodeDao(dbConfig).FindNodeByServerName(serverName)
 	if err != nil {
 		return fmt.Errorf("初始化node元数据失败. %s", err)
 	}
@@ -228,4 +195,52 @@ func setClusterGroupFromDB(dbConfig *config.MySQLConfig, cluster *topo.MySQLClus
 	}
 
 	return nil
+}
+
+// 获取服务的context
+func getServerContext(cfg *config.Config) (*ServerContext, error) {
+	if cfg.DalConfig.IsSetDal() {
+		seelog.Debugf("server context 信息从配置信息中获取")
+		return getServerContextFromDalConfig(cfg.DalConfig), nil
+	} else if cfg.DalConfig.IsSetName() { // 判断是否指定了dal名称, 如果指定则从数据中获取
+		seelog.Debugf("dal元数据信息从数据库中获取, dal名称:%s", cfg.DalConfig.Name)
+		return getServerContextFromDB(cfg.MySQLMeta, cfg.DalConfig.Name)
+	}
+
+	return nil, fmt.Errorf("没有指定启动dal信息, 也没有指定启动的dal名称, 从而无法从数据库中获取到dal信息")
+}
+
+// 从配置文件中获取dal信息
+func getServerContextFromDalConfig(cfg *config.DalConfig) *ServerContext {
+	var password string
+	// 设置密码
+	if pwd, err := peep.Decrypt(cfg.Password); err != nil {
+		seelog.Warnf("dal服务密码解密失败. 使用为解密前的密码. %s", err.Error())
+		password = cfg.Password
+	} else {
+		password = pwd
+	}
+
+	return NewServerContext(cfg.Name, cfg.ListenHost, cfg.ListenPort, cfg.Username, password, cfg.Database,
+		cfg.ShardTableInstanceNum, cfg.ClusterInstanceNum)
+}
+
+// 从数据库中获取dal信息
+func getServerContextFromDB(dbConfig *config.MySQLConfig, serverName string) (*ServerContext, error) {
+	server, err := dao.NewServerDao(dbConfig).GetServerByName(serverName)
+	if err != nil {
+		return nil, err
+	}
+
+	var password string
+	// 设置密码
+	if pwd, err := peep.Decrypt(server.Password); err != nil {
+		seelog.Warnf("dal服务密码解密失败. 使用为解密前的密码. %s", err.Error())
+		password = server.Password
+	} else {
+		password = pwd
+	}
+
+	return NewServerContext(server.Name, server.ListenHost, server.ListenPort, server.Username, password, server.DBName,
+		server.ShardTableInstanceNum, server.ClusterInstanceNum), nil
 }

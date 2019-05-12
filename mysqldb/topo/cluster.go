@@ -7,12 +7,6 @@ import (
 
 type MySQLCluster struct {
 	sync.RWMutex
-	Name          string
-	ListenHost    string
-	ListenPort    int
-	DBName        string
-	Username      string
-	Password      string
 	shardGroupMap map[int]int         // 分片对应的组Map key: shard 号, value: 组号 GNO
 	groups        map[int]*MySQLGroup // key: GNO, value: MySQLGroup
 }
@@ -22,16 +16,6 @@ func DefaultMySQLCluster() *MySQLCluster {
 		shardGroupMap: make(map[int]int),
 		groups:        make(map[int]*MySQLGroup),
 	}
-}
-
-// 显示集群概要信息
-func (this *MySQLCluster) Summary() string {
-	return fmt.Sprintf("{Name:%s, ListenHost:%s, ListenPort:%d, Username:%s, Password:******, Database:%s}",
-		this.Name, this.ListenHost, this.ListenPort, this.Username, this.DBName)
-}
-
-func (this *MySQLCluster) Addr() string {
-	return fmt.Sprintf("%s:%d", this.ListenHost, this.ListenPort)
 }
 
 func (this *MySQLCluster) AddGroup(group *MySQLGroup) {
@@ -122,12 +106,6 @@ func (this *MySQLCluster) GetGroups() []*MySQLGroup {
 // 克隆一个cluster, 深拷贝, 除了 node 的pool
 func (this *MySQLCluster) Clone() *MySQLCluster {
 	cluster := DefaultMySQLCluster()
-	cluster.Name = this.Name
-	cluster.DBName = this.DBName
-	cluster.ListenHost = this.ListenHost
-	cluster.ListenPort = this.ListenPort
-	cluster.Username = this.Username
-	cluster.Password = this.Password
 
 	tmpGroups := this.GetGroups()
 	for _, group := range tmpGroups {

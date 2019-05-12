@@ -15,13 +15,13 @@ func NewGroupDao(cfg *config.MySQLConfig) *GroupDao {
 }
 
 // 通过cluster名称获取cluster
-func (this *GroupDao) FindGrupByClusterName(name string) ([]*models.Group, error) {
+func (this *GroupDao) FindGrupByServerName(name string) ([]*models.Group, error) {
 	sqlStr := `
     SELECT g.*
     FROM groups AS g
-    LEFT JOIN clusters AS c
-        ON g.cluster_id = c.id
-    WHERE c.name = ?
+    LEFT JOIN servers AS s
+        ON g.server_id = s.id
+    WHERE s.name = ?
 `
 	db, err := gdbc.GetDB(this.cfg)
 	if err != nil {

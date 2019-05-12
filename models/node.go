@@ -2,6 +2,7 @@ package models
 
 type Node struct {
 	DefaultModel
+	ServerID    int64  `gorm:"column:server_id" json:"server_id"`
 	GroupID     int64  `gorm:"column:group_id" json:"group_id"`
 	Role        int8   `gorm:"column:role" json:"role"`
 	IsCandidate bool   `gorm:"column:is_candidate" json:"is_candidate"`
