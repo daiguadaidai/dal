@@ -6,24 +6,29 @@ import (
 
 // 分片的表
 type ShardTable struct {
-	Schema    string
-	Name      string
-	ShardCols map[string]struct{}
+	Schema      string
+	Name        string
+	ShardColMap map[string]struct{}
+	ShardCols   []string
 }
 
 func NewShardTable(schema, name string, cols ...string) (*ShardTable, error) {
-	shardCols := make(map[string]struct{})
 	if len(cols) == 0 {
 		return nil, fmt.Errorf("没有指定分表 %s.%s 的字段", schema, name)
 	}
-	for _, col := range cols {
-		shardCols[col] = struct{}{}
+
+	shardColMap := make(map[string]struct{})
+	shardCols := make([]string, len(cols))
+	for i, col := range cols {
+		shardColMap[col] = struct{}{}
+		shardCols[i] = col
 	}
 
 	shardTable := &ShardTable{
-		Schema:    schema,
-		Name:      name,
-		ShardCols: shardCols,
+		Schema:      schema,
+		Name:        name,
+		ShardColMap: shardColMap,
+		ShardCols:   shardCols,
 	}
 
 	return shardTable, nil
@@ -40,10 +45,12 @@ func (this *ShardTable) Clone() *ShardTable {
 
 	st.Schema = this.Schema
 	st.Name = this.Name
-	st.ShardCols = make(map[string]struct{})
+	st.ShardCols = make([]string, len(this.ShardCols))
+	st.ShardColMap = make(map[string]struct{})
 
-	for col, _ := range this.ShardCols {
-		st.ShardCols[col] = struct{}{}
+	for i, col := range this.ShardCols {
+		st.ShardCols[i] = col
+		st.ShardColMap[col] = struct{}{}
 	}
 
 	return st

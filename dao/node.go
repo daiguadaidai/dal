@@ -15,7 +15,7 @@ func NewNodeDao(cfg *config.MySQLConfig) *NodeDao {
 }
 
 // 通过cluster名称获取cluster
-func (this *NodeDao) FindNodeByServerName(name string) ([]*models.Node, error) {
+func (this *NodeDao) FindByServerName(name string) ([]*models.Node, error) {
 	sql := `
     SELECT n.*
     FROM nodes AS n

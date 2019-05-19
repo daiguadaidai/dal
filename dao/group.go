@@ -15,7 +15,7 @@ func NewGroupDao(cfg *config.MySQLConfig) *GroupDao {
 }
 
 // 通过cluster名称获取cluster
-func (this *GroupDao) FindGrupByServerName(name string) ([]*models.Group, error) {
+func (this *GroupDao) FindByServerName(name string) ([]*models.Group, error) {
 	sqlStr := `
     SELECT g.*
     FROM groups AS g

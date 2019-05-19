@@ -193,3 +193,20 @@ func TestDalContext_RandGetReadNodeWithDB(t *testing.T) {
 		fmt.Println(key, value)
 	}
 }
+
+// 打印shard table信息
+func TestDalContext_PrintSharTableInstanceWithDB(t *testing.T) {
+	cfg := new(config.Config)
+	if _, err := toml.Decode(cfgStrWithDB, cfg); err != nil {
+		t.Fatal(err.Error())
+	}
+
+	dalCtx, err := NewDalContext(cfg)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+
+	for i, shardTable := range dalCtx.ShardTableInstance.GetShardTables() {
+		fmt.Printf("第%d个分表. Schema:%s, Table:%s, Cols:%v\n", i, shardTable.Schema, shardTable.Name, shardTable.ShardCols)
+	}
+}

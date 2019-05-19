@@ -38,9 +38,15 @@ func NewDalContext(cfg *config.Config) (*DalContext, error) {
 		return nil, err
 	}
 	dalContext.ClusterInstance = clusterInstance
-	seelog.Infof("成功获取到dal集群信息")
+	seelog.Info("成功获取到dal集群信息")
 
 	// 4. 设置 shardTable instance
+	shardTableInstance, err := getShardTableInstance(cfg)
+	if err != nil {
+		return nil, err
+	}
+	dalContext.ShardTableInstance = shardTableInstance
+	seelog.Info("成功获取分表信息")
 
 	return dalContext, nil
 }
@@ -136,7 +142,7 @@ func setClusterFromDB(serverName string, dbConfig *config.MySQLConfig, cluster *
 // 从数据库中获取group信息设置到cluster中
 func setClusterGroupFromDB(dbConfig *config.MySQLConfig, cluster *topo.MySQLCluster, serverName string) error {
 	// 获取数据库中的group元数据信息
-	mGroups, err := dao.NewGroupDao(dbConfig).FindGrupByServerName(serverName)
+	mGroups, err := dao.NewGroupDao(dbConfig).FindByServerName(serverName)
 	if err != nil {
 		return fmt.Errorf("从数据库获取group元数据失败. %s", err)
 	}
@@ -145,7 +151,7 @@ func setClusterGroupFromDB(dbConfig *config.MySQLConfig, cluster *topo.MySQLClus
 	}
 
 	// 获取数据库中的所有Node信息
-	mNodes, err := dao.NewNodeDao(dbConfig).FindNodeByServerName(serverName)
+	mNodes, err := dao.NewNodeDao(dbConfig).FindByServerName(serverName)
 	if err != nil {
 		return fmt.Errorf("初始化node元数据失败. %s", err)
 	}
@@ -243,4 +249,33 @@ func getServerContextFromDB(dbConfig *config.MySQLConfig, serverName string) (*S
 
 	return NewServerContext(server.Name, server.ListenHost, server.ListenPort, server.Username, password, server.DBName,
 		server.ShardTableInstanceNum, server.ClusterInstanceNum), nil
+}
+
+// 获取 shard table instance
+func getShardTableInstance(cfg *config.Config) (*topo.ShardTableMapInstance, error) {
+	if cfg.DalConfig.IsSetDal() {
+		seelog.Debugf("元信息是从配置文件中获取, 因此不可能会有分表信息")
+	} else if cfg.DalConfig.IsSetName() { // 判断是否执行了dal名称, 是则从数据库中获取集群信息
+		seelog.Debugf("分表信息从数据库中获取")
+		return getShardTableInstanceFromDB(cfg.DalConfig.Name, cfg.DalConfig.ShardTableInstanceNum, cfg.MySQLMeta)
+	}
+
+	return topo.NewShardTableMapInstance(cfg.DalConfig.ShardTableInstanceNum), nil
+}
+
+func getShardTableInstanceFromDB(name string, instanceNum int, dbConfig *config.MySQLConfig) (*topo.ShardTableMapInstance, error) {
+	shardTableInstance := topo.NewShardTableMapInstance(instanceNum)
+
+	shardTables, err := dao.NewShardTableDao(dbConfig).FindByServerName(name)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, shardTable := range shardTables {
+		if err1 := shardTableInstance.AddShardTable(shardTable.DBName, shardTable.Name, shardTable.Columns()...); err != nil {
+			return nil, err1
+		}
+	}
+
+	return shardTableInstance, nil
 }
