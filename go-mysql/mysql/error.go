@@ -64,3 +64,11 @@ func ErrorCode(errMsg string) (code int) {
 	fmt.Sscanf(errMsg, "%s%d", &tmpStr, &code)
 	return
 }
+
+func ErrorMsg(errCode uint16) string {
+	msg, ok := MySQLErrName[errCode]
+	if ok {
+		return msg
+	}
+	return ""
+}

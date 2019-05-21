@@ -32,6 +32,7 @@ func createHandler(c net.Conn, ctx *dal_context.DalContext) {
 		seelog.Errorf("客户端[%s], Dal服务[%s] 建立链接失败, 获取到的链接为空", c.RemoteAddr(), c.LocalAddr())
 		return
 	}
+	seelog.Infof("客户端[%s], Dal服务[%s] 成功建立链接", c.RemoteAddr(), c.LocalAddr())
 
 	for i := 0; ; i++ {
 		if err := conn.HandleCommand(); err != nil {
@@ -40,7 +41,7 @@ func createHandler(c net.Conn, ctx *dal_context.DalContext) {
 		}
 		fmt.Println("=== ", i, " ===. conn closed:", conn.Closed())
 		if conn.Closed() {
-			fmt.Println("conn closed. bye")
+			seelog.Infof("客户端[%s]关闭和Dal服务[%s]的链接", c.RemoteAddr(), c.LocalAddr())
 			break
 		}
 	}

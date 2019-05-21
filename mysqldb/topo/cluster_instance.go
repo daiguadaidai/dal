@@ -40,7 +40,37 @@ func (this *ClusterInstance) GetWriteNodeByShard(shardNo int) (*MySQLNode, error
 	return cluster.GetWriteNodeByShard(shardNo)
 }
 
+// 通过分片号, 获取组
 func (this *ClusterInstance) GetGroupByShard(shardNo int) (*MySQLGroup, error) {
 	cluster := this.GetClusterByRand()
 	return cluster.GetGroupByShard(shardNo)
+}
+
+// 获取随机 gno
+func (this *ClusterInstance) GetGnoByRand() int {
+	cluster := this.GetClusterByRand()
+	return cluster.GetGnoByRand()
+}
+
+/* 随机获取一个读节点
+Return:
+    int: 组号
+	*MySQLNode: mysql节点
+	error: 错误
+*/
+func (this *ClusterInstance) GetReadNodeByRand() (int, *MySQLNode, error) {
+	cluster := this.GetClusterByRand()
+	return cluster.GetReadNodeByRand()
+}
+
+// 通过分片好获取组号
+func (this *ClusterInstance) GetGnoByShard(shardNo int) (int, error) {
+	cluster := this.GetClusterByRand()
+	return cluster.GetGnoByShard(shardNo)
+}
+
+// 通过 gno 获取读节点
+func (this *ClusterInstance) GetReadNodeByGno(gno int) (*MySQLNode, error) {
+	cluster := this.GetClusterByRand()
+	return cluster.GetReadNodeByGno(gno)
 }

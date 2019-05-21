@@ -11,7 +11,7 @@ import (
 
 type MySQLGroup struct {
 	sync.RWMutex
-	GNO              int // 组号
+	Gno              int // 组号
 	DBName           string
 	Master           string
 	candidateMasters map[string]struct{} // 候选 master
@@ -24,7 +24,7 @@ type MySQLGroup struct {
 func NewMySQLGroup(dbName string, gno int) *MySQLGroup {
 	return &MySQLGroup{
 		DBName:           dbName,
-		GNO:              gno,
+		Gno:              gno,
 		candidateMasters: make(map[string]struct{}),
 		slaves:           make(map[string]struct{}),
 		nodes:            make(map[string]*MySQLNode),
@@ -38,8 +38,8 @@ func (this *MySQLGroup) String() string {
 	for i, slave := range slaves {
 		hosts[i] = slave.Addr()
 	}
-	return fmt.Sprintf("GNO:%d., Master:%s, Slaves:%s",
-		this.GNO, this.Master, strings.Join(hosts, ", "))
+	return fmt.Sprintf("Gno:%d., Master:%s, Slaves:%s",
+		this.Gno, this.Master, strings.Join(hosts, ", "))
 }
 
 // 通过字符串设置shard num: 1,2, 3,4
@@ -228,7 +228,7 @@ func (this *MySQLGroup) GetNodes() []*MySQLNode {
 }
 
 func (this *MySQLGroup) Clone() *MySQLGroup {
-	group := NewMySQLGroup(this.DBName, this.GNO)
+	group := NewMySQLGroup(this.DBName, this.Gno)
 
 	// 获取所有node, 并添加
 	nodes := this.GetNodes()

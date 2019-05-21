@@ -2,13 +2,14 @@ package topo
 
 import (
 	"fmt"
+	"github.com/daiguadaidai/dal/utils"
 	"sync"
 )
 
 type MySQLCluster struct {
 	sync.RWMutex
-	shardGroupMap map[int]int         // 分片对应的组Map key: shard 号, value: 组号 GNO
-	groups        map[int]*MySQLGroup // key: GNO, value: MySQLGroup
+	shardGroupMap map[int]int         // 分片对应的组Map key: shard 号, value: 组号 Gno
+	groups        map[int]*MySQLGroup // key: Gno, value: MySQLGroup
 }
 
 func DefaultMySQLCluster() *MySQLCluster {
@@ -19,7 +20,7 @@ func DefaultMySQLCluster() *MySQLCluster {
 }
 
 func (this *MySQLCluster) AddGroup(group *MySQLGroup) {
-	this.groups[group.GNO] = group
+	this.groups[group.Gno] = group
 }
 
 // 初始化 shard对应group
@@ -33,11 +34,11 @@ func (this *MySQLCluster) InitShardGroup() {
 		shardNoMap := group.GetShardNoMap()
 		// 如果group没有分片信息 默认设置分片信息为 -1
 		if len(shardNoMap) == 0 {
-			shardGroupMap[-1] = group.GNO
+			shardGroupMap[-1] = group.Gno
 			continue
 		}
 		for key, _ := range shardNoMap {
-			shardGroupMap[key] = group.GNO
+			shardGroupMap[key] = group.Gno
 		}
 	}
 
@@ -47,8 +48,8 @@ func (this *MySQLCluster) InitShardGroup() {
 }
 
 // 通过分片好来获取指定MySQL读节点
-func (this *MySQLCluster) GetReadNodeByShard(shardNO int) (*MySQLNode, error) {
-	group, err := this.GetGroupByShard(shardNO)
+func (this *MySQLCluster) GetReadNodeByShard(shardNo int) (*MySQLNode, error) {
+	group, err := this.GetGroupByShard(shardNo)
 	if err != nil {
 		return nil, err
 	}
@@ -57,8 +58,8 @@ func (this *MySQLCluster) GetReadNodeByShard(shardNO int) (*MySQLNode, error) {
 }
 
 // 通过分片好来获取指定MySQL写节点
-func (this *MySQLCluster) GetWriteNodeByShard(shardNO int) (*MySQLNode, error) {
-	group, err := this.GetGroupByShard(shardNO)
+func (this *MySQLCluster) GetWriteNodeByShard(shardNo int) (*MySQLNode, error) {
+	group, err := this.GetGroupByShard(shardNo)
 	if err != nil {
 		return nil, err
 	}
@@ -72,21 +73,39 @@ func (this *MySQLCluster) GetWriteNodeByShard(shardNO int) (*MySQLNode, error) {
 }
 
 // 通过分片好获取组
-func (this *MySQLCluster) GetGroupByShard(shardNO int) (*MySQLGroup, error) {
+func (this *MySQLCluster) GetGroupByShard(shardNo int) (*MySQLGroup, error) {
+	gno, err := this.GetGnoByShard(shardNo)
+	if err != nil {
+		return nil, err
+	}
+
+	return this.GetGroupByGno(gno)
+}
+
+// 获取随机gno
+func (this *MySQLCluster) GetGnoByRand() int {
 	this.RLock()
 	defer this.RUnlock()
+	return utils.GetRandGno(len(this.groups))
+}
 
-	gno, ok := this.shardGroupMap[shardNO]
-	if !ok {
-		return nil, fmt.Errorf("指定的分片号: %d 没有获取到对应的 GNO", shardNO)
+// 随机获取一个group
+func (this *MySQLCluster) GetGroupByRand() (*MySQLGroup, error) {
+	gno := this.GetGnoByRand()
+	return this.GetGroupByGno(gno)
+}
+
+// 随机获取读节点
+func (this *MySQLCluster) GetReadNodeByRand() (int, *MySQLNode, error) {
+	group, err := this.GetGroupByRand()
+	if err != nil {
+		return -1, nil, err
 	}
-
-	group, ok := this.groups[gno]
-	if !ok {
-		return nil, fmt.Errorf("没有获取到对应的group. 分片号:%d, GNO:%d", shardNO, gno)
+	node, err := group.GetReadNode()
+	if err != nil {
+		return -1, nil, err
 	}
-
-	return group, nil
+	return group.Gno, node, nil
 }
 
 func (this *MySQLCluster) GetGroups() []*MySQLGroup {
@@ -101,6 +120,39 @@ func (this *MySQLCluster) GetGroups() []*MySQLGroup {
 	}
 
 	return groups
+}
+
+func (this *MySQLCluster) GetGnoByShard(shardNo int) (int, error) {
+	this.RLock()
+	defer this.RUnlock()
+
+	gno, ok := this.shardGroupMap[shardNo]
+	if !ok {
+		return -1, fmt.Errorf("指定的分片号: %d 没有获取到对应的 Gno", shardNo)
+	}
+	return gno, nil
+}
+
+func (this *MySQLCluster) GetGroupByGno(gno int) (*MySQLGroup, error) {
+	this.RLock()
+	defer this.RUnlock()
+
+	group, ok := this.groups[gno]
+	if !ok {
+		return nil, fmt.Errorf("没有获取到对应的group. Gno:%d", gno)
+	}
+
+	return group, nil
+}
+
+// 获取读节点通过group no
+func (this *MySQLCluster) GetReadNodeByGno(gno int) (*MySQLNode, error) {
+	group, err := this.GetGroupByGno(gno)
+	if err != nil {
+		return nil, err
+	}
+
+	return group.GetReadNode()
 }
 
 // 克隆一个cluster, 深拷贝, 除了 node 的pool

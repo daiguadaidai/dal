@@ -18,3 +18,13 @@ func GetRandSlot(max int) int {
 
 	return 0
 }
+
+func GetRandGno(max int) int {
+	if max == 1 {
+		return 0
+	} else {
+		return rand.Intn(max - 1)
+	}
+
+	return 0
+}
