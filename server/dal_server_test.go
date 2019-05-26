@@ -10,7 +10,7 @@ import (
 var cfgStrWithDB string = `
 # dal配置信息
 [dal]
-name = "cluster-name-02"
+name = "cluster-name-01"
 listen_host = ""
 listen_port = 0
 username = "root"

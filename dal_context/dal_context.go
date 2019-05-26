@@ -228,7 +228,7 @@ func getServerContextFromDalConfig(cfg *config.DalConfig) *ServerContext {
 	}
 
 	return NewServerContext(cfg.Name, cfg.ListenHost, cfg.ListenPort, cfg.Username, password, cfg.Database,
-		cfg.ShardTableInstanceNum, cfg.ClusterInstanceNum)
+		cfg.ShardTableInstanceNum, cfg.ClusterInstanceNum, 0)
 }
 
 // 从数据库中获取dal信息
@@ -248,7 +248,7 @@ func getServerContextFromDB(dbConfig *config.MySQLConfig, serverName string) (*S
 	}
 
 	return NewServerContext(server.Name, server.ListenHost, server.ListenPort, server.Username, password, server.DBName,
-		server.ShardTableInstanceNum, server.ClusterInstanceNum), nil
+		server.ShardTableInstanceNum, server.ClusterInstanceNum, server.ShardCnt), nil
 }
 
 // 获取 shard table instance

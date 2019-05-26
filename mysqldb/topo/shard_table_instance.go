@@ -1,15 +1,15 @@
 package topo
 
 import (
-	"fmt"
 	"github.com/cihub/seelog"
 	"github.com/daiguadaidai/dal/utils"
 	"sync"
 )
 
 type ShardTableMapInstance struct {
-	shardTables   []*sync.Map
-	ShardTableCnt int
+	shardTableMaps   []*sync.Map
+	shardTableMapCnt int // 保存shard table的实例数
+	ShardTableCnt    int // 有几个表是需要分库分表的
 }
 
 func NewShardTableMapInstance(mapCnt int) *ShardTableMapInstance {
@@ -19,8 +19,8 @@ func NewShardTableMapInstance(mapCnt int) *ShardTableMapInstance {
 	}
 
 	return &ShardTableMapInstance{
-		shardTables:   stMaps,
-		ShardTableCnt: mapCnt,
+		shardTableMaps:   stMaps,
+		shardTableMapCnt: mapCnt,
 	}
 }
 
@@ -31,21 +31,25 @@ func (this *ShardTableMapInstance) AddShardTable(schema, table string, cols ...s
 		return err
 	}
 
-	for i, stMap := range this.shardTables {
+	for i, stMap := range this.shardTableMaps {
 		stMap.Store(st.TableName(), st.Clone())
 		seelog.Debugf("shard table:%s.%s 成功添加到第%d个实例中", schema, table, i)
 	}
-	seelog.Infof("表:%s.%s. 成功添加到每一个shard table实例中. shard Table实例一共有 %d 个", schema, table, len(this.shardTables))
+	seelog.Infof("表:%s.%s. 成功添加到每一个shard table实例中. shard Table实例一共有 %d 个", schema, table, len(this.shardTableMaps))
 
+	this.ShardTableCnt++
 	return nil
 }
 
 // 获取shard表
 func (this *ShardTableMapInstance) GetShardTable(schema, table string) (*ShardTable, bool) {
 	// 随机计算出使用哪一个map实例
-	stMap := this.GetShardTableMapByRand()
+	key := utils.ConcatTableName(&schema, &table)
+	return this.GetShardTableByKey(key)
+}
 
-	key := fmt.Sprintf("%s.%s", schema, table)
+func (this *ShardTableMapInstance) GetShardTableByKey(key string) (*ShardTable, bool) {
+	stMap := this.GetShardTableMapByRand()
 	st, ok := stMap.Load(key)
 	if !ok {
 		return nil, ok
@@ -55,8 +59,8 @@ func (this *ShardTableMapInstance) GetShardTable(schema, table string) (*ShardTa
 
 // 获取随机的分表实例
 func (this *ShardTableMapInstance) GetShardTableMapByRand() *sync.Map {
-	slot := utils.GetRandSlot(this.ShardTableCnt)
-	stMap := this.shardTables[slot]
+	slot := utils.GetRandSlot(this.shardTableMapCnt)
+	stMap := this.shardTableMaps[slot]
 	return stMap
 }
 

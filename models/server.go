@@ -10,6 +10,7 @@ type Server struct {
 	DBName                string `gorm:"column:db_name" json:"db_name"`
 	ShardTableInstanceNum int    `gorm:"column:shard_table_instance_num" json:"shard_table_instance_num"`
 	ClusterInstanceNum    int    `gorm:"column:cluster_instance_num" json:"cluster_instance_num"`
+	ShardCnt              int    `gorm:"column:shard_cnt" json:"shard_cnt"` // 该dal是几个分片
 }
 
 func (Server) TableName() string {

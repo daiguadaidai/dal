@@ -5,6 +5,7 @@ import (
 	"github.com/daiguadaidai/dal/dal_context"
 	"github.com/daiguadaidai/dal/executor"
 	"github.com/daiguadaidai/dal/go-mysql/mysql"
+	"strings"
 )
 
 const (
@@ -18,7 +19,8 @@ type DalHandler struct {
 
 func NewDalHadler(ctx *dal_context.DalContext) *DalHandler {
 	return &DalHandler{
-		ctx: ctx,
+		ctx:   ctx,
+		mExec: executor.NewMySQLExecutor(ctx),
 	}
 }
 
@@ -28,7 +30,10 @@ func (this *DalHandler) UseDB(dbName string) error {
 
 func (this *DalHandler) HandleQuery(query string) (*mysql.Result, error) {
 	fmt.Println(query)
-	return this.mExec.HandleQuery(&query)
+	// 将带有百分号替换成想 两个百分号
+	newQuery := strings.ReplaceAll(query, "%", "%%")
+	fmt.Println(newQuery)
+	return this.mExec.HandleQuery(&newQuery)
 }
 
 func (this *DalHandler) HandleFieldList(table string, fieldWildcard string) ([]*mysql.Field, error) {

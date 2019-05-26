@@ -2,6 +2,7 @@ package topo
 
 import (
 	"fmt"
+	"github.com/daiguadaidai/dal/utils"
 )
 
 // 分片的表
@@ -36,7 +37,7 @@ func NewShardTable(schema, name string, cols ...string) (*ShardTable, error) {
 
 // 获取完整表名
 func (this *ShardTable) TableName() string {
-	return fmt.Sprintf("%s.%s", this.Schema, this.Name)
+	return utils.ConcatTableName(&this.Schema, &this.Name)
 }
 
 // 克隆一个分表. 深拷贝

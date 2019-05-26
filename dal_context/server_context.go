@@ -11,6 +11,7 @@ type ServerContext struct {
 	DBName                string
 	ShardTableInstanceNum int
 	ClusterInstanceNum    int
+	ShardCnt              int // dal分片数量
 }
 
 func NewServerContext(
@@ -22,6 +23,7 @@ func NewServerContext(
 	dbName string,
 	shardTableInstanceNum int,
 	clusterInstanceNum int,
+	shardCnt int,
 ) *ServerContext {
 	return &ServerContext{
 		Name:                  name,
@@ -32,6 +34,7 @@ func NewServerContext(
 		DBName:                dbName,
 		ShardTableInstanceNum: shardTableInstanceNum,
 		ClusterInstanceNum:    clusterInstanceNum,
+		ShardCnt:              shardCnt,
 	}
 }
 

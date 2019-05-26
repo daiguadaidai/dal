@@ -99,3 +99,76 @@ func ShardNoStrsToIntMap(str string) map[int]struct{} {
 
 	return shardNoMap
 }
+
+/* 获得缩进
+Params:
+	depth: 缩进多少
+	placeholder: 缩进的符号
+	multi: 一个缩进要多少个符号
+*/
+func GetIntend(depth int, placeholder string, multi int) string {
+	return strings.Repeat(placeholder, depth*multi)
+}
+
+// 组装表名
+func ConcatTableName(schema *string, table *string) string {
+	if schema != nil && *schema != "" {
+		return fmt.Sprintf("%s.%s", *schema, *table)
+	}
+
+	return *table
+}
+
+// 获取shardtable的key
+func GetShardTableKey(defaultSchema *string, schema *string, name *string) string {
+	if *schema != "" {
+		return ConcatTableName(schema, name)
+	}
+
+	return ConcatTableName(defaultSchema, name)
+}
+
+// 获取 schema.table
+func GetConcatSchemAndTableKey(defaultSchema *string, schema *string, table *string, alias *string) string {
+	newSchema, newTable := GetSchemaAndTable(defaultSchema, schema, table, alias)
+	return ConcatTableName(&newSchema, &newTable)
+}
+
+// 获取schema 和 table
+func GetSchemaAndTable(defaultSchema *string, schema *string, table *string, alias *string) (string, string) {
+	return GetSchemaName(defaultSchema, schema), GetTableName(table, alias)
+}
+
+// 获取 字段 schema.table.col
+func GetConcatColumn(schema string, table string, col string) string {
+	if schema == "" {
+		return GetConcatColumnWitchTableAndCol(table, col)
+	}
+
+	return fmt.Sprintf("%s.%s.%s", schema, table, col)
+}
+
+// 获取 字段 table.col
+func GetConcatColumnWitchTableAndCol(table string, col string) string {
+	if table == "" {
+		return col
+	}
+
+	return fmt.Sprintf("%s.%s", table, col)
+}
+
+// 获取 数据库 名
+func GetSchemaName(defaultName, dbName *string) string {
+	if dbName != nil && *dbName != "" {
+		return *dbName
+	}
+	return *defaultName
+}
+
+// 获取表别名
+func GetTableName(ori, alias *string) string {
+	if alias != nil && *alias != "" {
+		return *alias
+	}
+	return *ori
+}

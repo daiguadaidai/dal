@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"github.com/daiguadaidai/dal/dal_context"
 	"github.com/daiguadaidai/dal/go-mysql/mysql"
+	"github.com/daiguadaidai/dal/visitor"
 	"github.com/daiguadaidai/parser"
 	"github.com/daiguadaidai/parser/ast"
+	"github.com/daiguadaidai/parser/format"
 	_ "github.com/daiguadaidai/tidb/types/parser_driver"
 	"strings"
 )
@@ -27,6 +29,102 @@ func NewMySQLExecutor(ctx *dal_context.DalContext) *MySQLExecutor {
 	}
 }
 
+// 处理SQL语句
+func (this *MySQLExecutor) HandleQuery(query *string) (*mysql.Result, error) {
+	ps := parser.New()
+	stmtNode, err := ps.ParseOneStmt(*query, this.Charset, this.Collation)
+	if err != nil {
+		return nil, mysql.NewError(mysql.ER_SYNTAX_ERROR, fmt.Sprintf("%s. %s", mysql.ErrorMsg(mysql.ER_SYNTAX_ERROR), err.Error()))
+	}
+
+	switch stmt := stmtNode.(type) {
+	case *ast.CreateDatabaseStmt:
+		return nil, fmt.Errorf("Error: 不支持(创建)数据库, CreateDatabaseStmt. %s", *query)
+	case *ast.DropDatabaseStmt:
+		return nil, fmt.Errorf("Error: 不支持(删除)数据库, DropDatabaseStmt. %s", *query)
+	case *ast.CreateTableStmt:
+		return nil, fmt.Errorf("Error: 不支持(创建)表, CreateTableStmt. %s", *query)
+	case *ast.DropTableStmt:
+		return nil, fmt.Errorf("Error: 不支持(删除)表, DropTableStmt. %s", *query)
+	case *ast.RenameTableStmt:
+		return nil, fmt.Errorf("Error: 不支持(重命名)表, RenameTableStmt. %s", *query)
+	case *ast.CreateViewStmt:
+		return nil, fmt.Errorf("Error: 不支持(创建)视图, CreateViewStmt. %s", *query)
+	case *ast.CreateIndexStmt:
+		return nil, fmt.Errorf("Error: 不支持(创建)索引, CreateIndexStmt. %s", *query)
+	case *ast.DropIndexStmt:
+		return nil, fmt.Errorf("Error: 不支持(删除)索引, DropIndexStmt. %s", *query)
+	case *ast.AlterTableStmt:
+		return nil, fmt.Errorf("Error: 不支持(修改)表, AlterTableStmt. %s", *query)
+	case *ast.TruncateTableStmt:
+		return nil, fmt.Errorf("Error: 不支持(清空)表, TruncateTableStmt. %s", *query)
+	case *ast.SelectStmt:
+		return this.doSelectStmt(query, stmt)
+	case *ast.UnionStmt:
+		return nil, fmt.Errorf("Error: UnionStmt")
+	case *ast.LoadDataStmt:
+		return nil, fmt.Errorf("Error: 不支持(Load)加载数据, LoadDataStmt. %s", *query)
+	case *ast.InsertStmt:
+		return nil, fmt.Errorf("Error: InsertStmt")
+	case *ast.DeleteStmt:
+		return nil, fmt.Errorf("Error: DeleteStmt")
+	case *ast.UpdateStmt:
+		return nil, fmt.Errorf("Error: UpdateStmt")
+	case *ast.ShowStmt:
+		return nil, fmt.Errorf("Error: 不支持(show)操作, ShowStmt. %s", *query)
+	case *ast.TraceStmt:
+		return nil, fmt.Errorf("Error: 不支持(trace)操作, TraceStmt. %s", *query)
+	case *ast.ExplainStmt:
+		return nil, fmt.Errorf("Error: 不支持(explain)操作, ExplainStmt. %s", *query)
+	case *ast.PrepareStmt:
+		return nil, fmt.Errorf("Error: PrepareStmt")
+	case *ast.DeallocateStmt:
+		return nil, fmt.Errorf("Error: 不支持(重新分配)操作, DeallocateStmt. %s", *query)
+	case *ast.ExecuteStmt:
+		return nil, fmt.Errorf("Error: ExecuteStmt")
+	case *ast.BeginStmt:
+		return nil, fmt.Errorf("Error: beginStmt")
+	case *ast.BinlogStmt:
+		return nil, fmt.Errorf("Error: 不支持(binlog)操作, BinlogStmt. %s", *query)
+	case *ast.CommitStmt:
+		return nil, fmt.Errorf("Error: CommitStmt")
+	case *ast.RollbackStmt:
+		return nil, fmt.Errorf("Error: RollbackStmt")
+	case *ast.UseStmt:
+		return nil, this.UseDB(&stmt.DBName)
+	case *ast.FlushStmt:
+		return nil, fmt.Errorf("Error: 不支持(flush)操作, FlushStmt. %s", *query)
+	case *ast.KillStmt:
+		return nil, fmt.Errorf("Error: 不支持(kill)操作, KillStmt. %s", *query)
+	case *ast.SetStmt:
+		return nil, fmt.Errorf("Error: 不支持(set)操作, SetStmt. %s", *query)
+	case *ast.SetPwdStmt:
+		return nil, fmt.Errorf("Error: 不支持(set password)操作, SetPwdStmt. %s", *query)
+	case *ast.CreateUserStmt:
+		return nil, fmt.Errorf("Error: 不支持(创建)用户, CreateUserStmt. %s", *query)
+	case *ast.AlterUserStmt:
+		return nil, fmt.Errorf("Error: 不支持(修改)用户, AlterUserStmt. %s", *query)
+	case *ast.DropUserStmt:
+		return nil, fmt.Errorf("Error: 不支持(删除)用户, DropUserStmt. %s", *query)
+	case *ast.DoStmt:
+		return nil, fmt.Errorf("Error: 不支持(do)操作, DoStmt. %s", *query)
+	case *ast.AdminStmt:
+		return nil, fmt.Errorf("Error: 不支持(管理)语句, AdminStmt. %s", *query)
+	case *ast.RevokeStmt:
+		return nil, fmt.Errorf("Error: 不支持(revoke)操作, RevokeStmt. %s", *query)
+	case *ast.GrantStmt:
+		return nil, fmt.Errorf("Error: 不支持(grant)操作, GrantStmt. %s", *query)
+	case *ast.AnalyzeTableStmt:
+		return nil, fmt.Errorf("Error: 不支持(分析)表, AnalyzeTableStmt. %s", *query)
+	case *ast.DropStatsStmt:
+		return nil, fmt.Errorf("Error: 不支持(drop status)操作, DropStatsStmt. %s", *query)
+	case *ast.LoadStatsStmt:
+		return nil, fmt.Errorf("Error: 不支持(load status)操作, LoadStatsStmt. %s", *query)
+	}
+
+	return nil, fmt.Errorf("Error: 未知SQL类型. %s")
+}
+
 // use db 语句
 func (this *MySQLExecutor) UseDB(dbName *string) error {
 	// 如果当前已经是 use db, 不需要链接数据库操作
@@ -42,7 +140,7 @@ func (this *MySQLExecutor) UseDB(dbName *string) error {
 	if err != nil {
 		return err
 	}
-	this.connMgr.CloseConnByGno(gno)
+	defer this.connMgr.CloseConnByGno(gno)
 
 	// 指定变换当前数据库
 	rs, err := nodeConn.Conn.Execute(fmt.Sprintf("SHOW DATABASES LIKE '%s'", dbName))
@@ -60,98 +158,18 @@ func (this *MySQLExecutor) UseDB(dbName *string) error {
 	return nil
 }
 
-// 处理SQL语句
-func (this *MySQLExecutor) HandleQuery(query *string) (*mysql.Result, error) {
-	ps := parser.New()
-	stmtNode, err := ps.ParseOneStmt(*query, this.Charset, this.Collation)
-	if err != nil {
-		return nil, mysql.NewError(mysql.ER_SYNTAX_ERROR, fmt.Sprintf("%s. %s", mysql.ErrorMsg(mysql.ER_SYNTAX_ERROR), err.Error()))
+// 操作 select 语句
+func (this *MySQLExecutor) doSelectStmt(query *string, stmt *ast.SelectStmt) (*mysql.Result, error) {
+	vst := visitor.NewSelectVisitor(this.ctx)
+	stmt.Accept(vst)
+	if vst.Err != nil { // 解析语句违反了分表中的一些规则
+		return nil, vst.Err
 	}
 
-	switch stmt := stmtNode.(type) {
-	case *ast.CreateDatabaseStmt:
-		return nil, fmt.Errorf("Error: CreateDatabaseStmt")
-	case *ast.DropDatabaseStmt:
-		return nil, fmt.Errorf("Error: DropDatabaseStmt")
-	case *ast.CreateTableStmt:
-		return nil, fmt.Errorf("Error: CreateTableStmt")
-	case *ast.DropTableStmt:
-		return nil, fmt.Errorf("Error: DropTableStmt")
-	case *ast.RenameTableStmt:
-		return nil, fmt.Errorf("Error: RenameTableStmt")
-	case *ast.CreateViewStmt:
-		return nil, fmt.Errorf("Error: CreateViewStmt")
-	case *ast.CreateIndexStmt:
-		return nil, fmt.Errorf("Error: CreateIndexStmt")
-	case *ast.DropIndexStmt:
-		return nil, fmt.Errorf("Error: DropIndexStmt")
-	case *ast.AlterTableStmt:
-		return nil, fmt.Errorf("Error: AlterTableStmt")
-	case *ast.TruncateTableStmt:
-		return nil, fmt.Errorf("Error: TruncateTableStmt")
-	case *ast.SelectStmt:
-		return nil, fmt.Errorf("Error: SelectStmt")
-	case *ast.UnionStmt:
-		return nil, fmt.Errorf("Error: UnionStmt")
-	case *ast.LoadDataStmt:
-		return nil, fmt.Errorf("Error: LoadDataStmt")
-	case *ast.InsertStmt:
-		return nil, fmt.Errorf("Error: InsertStmt")
-	case *ast.DeleteStmt:
-		return nil, fmt.Errorf("Error: DeleteStmt")
-	case *ast.UpdateStmt:
-		return nil, fmt.Errorf("Error: UpdateStmt")
-	case *ast.ShowStmt:
-		return nil, fmt.Errorf("Error: ShowStmt")
-	case *ast.TraceStmt:
-		return nil, fmt.Errorf("Error: TraceStmt")
-	case *ast.ExplainStmt:
-		return nil, fmt.Errorf("Error: ExplainStmt")
-	case *ast.PrepareStmt:
-		return nil, fmt.Errorf("Error: PrepareStmt")
-	case *ast.DeallocateStmt:
-		return nil, fmt.Errorf("Error: DeallocateStmt")
-	case *ast.ExecuteStmt:
-		return nil, fmt.Errorf("Error: ExecuteStmt")
-	case *ast.BeginStmt:
-		return nil, fmt.Errorf("Error: beginStmt")
-	case *ast.BinlogStmt:
-		return nil, fmt.Errorf("Error: BinlogStmt")
-	case *ast.CommitStmt:
-		return nil, fmt.Errorf("Error: CommitStmt")
-	case *ast.RollbackStmt:
-		return nil, fmt.Errorf("Error: RollbackStmt")
-	case *ast.UseStmt:
-		return nil, this.UseDB(&stmt.DBName)
-	case *ast.FlushStmt:
-		return nil, fmt.Errorf("Error: FlushStmt")
-	case *ast.KillStmt:
-		return nil, fmt.Errorf("Error: KillStmt")
-	case *ast.SetStmt:
-		return nil, fmt.Errorf("Error: SetStmt")
-	case *ast.SetPwdStmt:
-		return nil, fmt.Errorf("Error: SetPwdStmt")
-	case *ast.CreateUserStmt:
-		return nil, fmt.Errorf("Error: CreateUserStmt")
-	case *ast.AlterUserStmt:
-		return nil, fmt.Errorf("Error: AlterUserStmt")
-	case *ast.DropUserStmt:
-		return nil, fmt.Errorf("Error: DropUserStmt")
-	case *ast.DoStmt:
-		return nil, fmt.Errorf("Error: DoStmt")
-	case *ast.AdminStmt:
-		return nil, fmt.Errorf("Error: AdminStmt")
-	case *ast.RevokeStmt:
-		return nil, fmt.Errorf("Error: RevokeStmt")
-	case *ast.GrantStmt:
-		return nil, fmt.Errorf("Error: GrantStmt")
-	case *ast.AnalyzeTableStmt:
-		return nil, fmt.Errorf("Error: AnalyzeTableStmt")
-	case *ast.DropStatsStmt:
-		return nil, fmt.Errorf("Error: DropStatsStmt")
-	case *ast.LoadStatsStmt:
-		return nil, fmt.Errorf("Error: LoadStatsStmt")
+	var sb strings.Builder
+	if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
+		return nil, fmt.Errorf("从写SQL失败. %s", fmt.Sprintf(*query))
 	}
-
-	return nil, fmt.Errorf("不支持该sql语句: %s")
+	fmt.Println("重写sql成功:", sb.String())
+	return nil, nil
 }
