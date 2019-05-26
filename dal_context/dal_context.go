@@ -3,6 +3,7 @@ package dal_context
 import (
 	"fmt"
 	"github.com/cihub/seelog"
+	"github.com/daiguadaidai/dal/algorithm"
 	"github.com/daiguadaidai/dal/config"
 	"github.com/daiguadaidai/dal/dao"
 	"github.com/daiguadaidai/dal/mysqldb/topo"
@@ -15,6 +16,7 @@ type DalContext struct {
 	ServerCtx          *ServerContext
 	ShardTableInstance *topo.ShardTableMapInstance
 	ClusterInstance    *topo.ClusterInstance
+	ShardAlgorithm     algorithm.Algorithm
 }
 
 // 创建dal需要使用的上下文信息
@@ -47,6 +49,10 @@ func NewDalContext(cfg *config.Config) (*DalContext, error) {
 	}
 	dalContext.ShardTableInstance = shardTableInstance
 	seelog.Info("成功获取分表信息")
+
+	// 获取计算 shard no 的算法
+	dalContext.ShardAlgorithm = algorithm.NewCrc32Hash(serverCtx.ShardCnt)
+	seelog.Info("成功获取到计算分片算法(crc32)")
 
 	return dalContext, nil
 }

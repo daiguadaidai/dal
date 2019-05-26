@@ -9,5 +9,6 @@ type Algorithm interface {
 	 *     int: hash 后的分片号(代表数据属于那个分片)
 	 *     error: 错误
 	 */
-	GetShardNo(shardCNT int, cols ...interface{}) (int, error)
+	GetShardNo(cols ...interface{}) (int, error)
+	GetShardNoByCnt(shardCnt int, cols ...interface{}) (int, error)
 }

@@ -166,10 +166,35 @@ func (this *MySQLExecutor) doSelectStmt(query *string, stmt *ast.SelectStmt) (*m
 		return nil, vst.Err
 	}
 
-	var sb strings.Builder
-	if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
-		return nil, fmt.Errorf("从写SQL失败. %s", fmt.Sprintf(*query))
+	var sqlStr string
+	// 判断是不是分库分表语句
+	if len(vst.VisitorStmtMap) != 0 { // 是分库分表
+		// 获取分表的字段并且计算所在的shard
+		var computShardNoOk bool
+		for _, visitorStmt := range vst.VisitorStmtMap {
+			if shardNo, ok := visitorStmt.GetShardNo(this.ctx.ShardAlgorithm); ok { // 是分表就执行sql
+				var sb strings.Builder
+				if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
+					return nil, fmt.Errorf("从写SQL失败. %s", fmt.Sprintf(*query))
+				}
+				fmt.Println("分库分表, 重写sql成功:", sb.String())
+				sqlStr = fmt.Sprintf(sb.String(), shardNo)
+				computShardNoOk = true
+			}
+		}
+		if !computShardNoOk { // 计算分片好失败
+			return nil, fmt.Errorf("无法从分表字段中计算出(分片号), 请检查提供的字段是否完整.")
+		}
+	} else { // 非分库分表的情况
+		var sb strings.Builder
+		if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
+			return nil, fmt.Errorf("从写SQL失败. %s", fmt.Sprintf(*query))
+		}
+		fmt.Println("(非)分库分表, 重写sql成功:", sb.String())
+		sqlStr = fmt.Sprintf(sb.String())
 	}
-	fmt.Println("重写sql成功:", sb.String())
+
+	fmt.Println("最终需要执行的sql:", sqlStr)
+
 	return nil, nil
 }

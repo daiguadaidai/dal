@@ -19,7 +19,6 @@ type SelectVisitor struct {
 	StmtNoHeap      *utils.IntHeap       // 使用一个堆保存便利过的语句.
 	StmtNo          int                  // 记录了总语句数
 	CurrStmtNo      int                  // 记录了当前是第几个语句
-	BeforeBlock     int                  // 上一层所在语句块
 	CurrBlock       int                  // 当前所在的语句块
 	BlockHeap       *utils.IntHeap       // 当前所在语句块栈
 }
@@ -43,27 +42,36 @@ func NewSelectVisitor(ctx *dal_context.DalContext) *SelectVisitor {
 
 // 计算语句有几个
 func (this *SelectVisitor) incrStmtNo() {
+	if this.CurrVisitorStmt != nil {
+		this.VisitorStmtMap[this.CurrStmtNo] = this.CurrVisitorStmt
+		this.CurrVisitorStmt = nil
+	}
+
 	this.StmtNoHeap.Push(this.CurrStmtNo)
 	this.StmtNo++
 	this.CurrStmtNo = this.StmtNo
+
 }
 
 // pop 出语句号, 并计算应该到第几个语句了
 func (this *SelectVisitor) popStmtNo() {
+	this.CurrVisitorStmt = nil
 	if currStmtNo, ok := this.StmtNoHeap.Pop(); ok {
 		this.CurrStmtNo = currStmtNo
+		if visitorStmt, ok := this.VisitorStmtMap[this.CurrStmtNo]; ok {
+			this.CurrVisitorStmt = visitorStmt
+		}
 	}
 }
 
 // 记录当前语句块
 func (this *SelectVisitor) setCurrBlock(currBlock int) {
-	this.StmtNoHeap.Push(this.CurrBlock) // 将当前block保存下来
-	this.CurrBlock = currBlock           // 重置当前block
+	this.BlockHeap.Push(this.CurrBlock) // 将当前block保存下来
+	this.CurrBlock = currBlock          // 重置当前block
 }
 
 // pop语句块
 func (this *SelectVisitor) popBlock() {
-	this.BeforeBlock = this.CurrBlock
 	if block, ok := this.BlockHeap.Pop(); ok {
 		this.CurrBlock = block
 	}
@@ -138,14 +146,6 @@ func (this *SelectVisitor) Leave(in ast.Node) (out ast.Node, ok bool) {
 func (this *SelectVisitor) enterSelectStmt(node *ast.SelectStmt) error {
 	// 计算语句号, 计算语句有几个
 	this.incrStmtNo()
-
-	// 获取当前语句信息, 每个一句有且仅有这一个变量
-	if currVisitorStmt, ok := this.VisitorStmtMap[this.CurrStmtNo]; ok { // 当前访问语句存在
-		this.CurrVisitorStmt = currVisitorStmt
-	} else { // 当前访问语句不存在, 将当前访问语句强制设置为nil
-		this.CurrVisitorStmt = nil
-	}
-
 	return nil
 }
 
@@ -223,7 +223,7 @@ func (this *SelectVisitor) leaveTableSource(node *ast.TableSource) error {
 	tableName, ok := node.Source.(*ast.TableName)
 	if ok { // 判断是否是分表, 如果是分表则修改表的名称有下划线
 		if exists := this.CurrVisitorStmt.TableExists(&this.DefaultSchema, &tableName.Schema.O, &tableName.Name.O, &node.AsName.O); exists {
-			tableName.Name.O += "_%d"
+			tableName.Name.O += "_%[1]d"
 		}
 	}
 
@@ -232,10 +232,7 @@ func (this *SelectVisitor) leaveTableSource(node *ast.TableSource) error {
 
 // 进入含有类似 a = 1, b = 2. 的语句块中.
 func (this *SelectVisitor) enterBinaryOperationExpr(node *ast.BinaryOperationExpr) error {
-	// 判断是否在 WHERE block, 如果上一层是TableRefsClause节点
-	if this.BeforeBlock == BLOCK_TABLE_REF_CLAUSE {
-		this.setCurrBlock(BLOCK_WHERE)
-	}
+	this.setCurrBlock(BLOCK_WHERE)
 
 	return nil
 }
@@ -243,21 +240,38 @@ func (this *SelectVisitor) enterBinaryOperationExpr(node *ast.BinaryOperationExp
 // 出 BinaryOperationExpr 节点
 func (this *SelectVisitor) leaveBinaryOperationExpr(node *ast.BinaryOperationExpr) error {
 	defer this.popBlock()
+	if this.CurrVisitorStmt == nil { // 如果该语句中没有分库分表, 就不用管了
+		return nil
+	}
 
 	// 碰到谓词等式
 	// 谓词左边字段名
 	columnNameExpr, ok := node.L.(*ast.ColumnNameExpr)
-	if !ok {
-		return nil
+	if ok {
+		// 判断该字段是否是分表字段
+		visitorTable, err := this.CurrVisitorStmt.GetVisitorTableIfIsShardCol(&this.DefaultSchema, columnNameExpr)
+		if err != nil {
+			return err
+		}
+		if visitorTable == nil { // 该字段不是分表计算字段
+			return nil
+		}
+		// 确定字段是分表计算使用的字段, 则谓词右边必须是一个值, 不能是表达式, 或则子句, 或则方法
+		// 谓词右边值, 比如(不合法)的写法有: name = max(1) 或 name = (select name from employees) 等等
+		//                (合法)的有    : name = 1 或 name = 'aa'
+		switch v := node.R.(type) {
+		case *driver.ValueExpr:
+			// 将值添加到 visitor table 中
+			if _, ok := visitorTable.ColValues[columnNameExpr.Name.Name.O]; ok {
+				return fmt.Errorf("分表字段: %s, 同一子句中不能出现多次, 不合法示例: name = 1 and name = 2", columnNameExpr.Name.Name.O)
+			}
+			visitorTable.ColValues[columnNameExpr.Name.Name.O] = v.GetValue()
+		case *ast.SubqueryExpr:
+			return fmt.Errorf("分表字段的右值不能为子查询, 错误示例: name = (select name from employees)")
+		case *ast.FuncCallExpr, *ast.AggregateFuncExpr:
+			return fmt.Errorf("分表字段的右值不能是函数, 错误示例: name = max(1)")
+		}
 	}
-	// 谓词右边值
-	valueExpr, ok := node.R.(*driver.ValueExpr)
-	if !ok {
-		return nil
-	}
-
-	// 需要判断不否是分库分表字段
-	fmt.Printf("%s: %v, %T\n", columnNameExpr.Name, valueExpr.GetValue(), valueExpr.GetValue())
 
 	return nil
 }
@@ -277,11 +291,11 @@ func (this *SelectVisitor) leavePatternInExpr(node *ast.PatternInExpr) error {
 
 	if columnNameExpr, ok := node.Expr.(*ast.ColumnNameExpr); ok {
 		// 判断该字段是否是分表字段
-		yes, err := this.CurrVisitorStmt.IsShardColumn(&this.DefaultSchema, columnNameExpr)
+		visitorTable, err := this.CurrVisitorStmt.GetVisitorTableIfIsShardCol(&this.DefaultSchema, columnNameExpr)
 		if err != nil {
 			return err
 		}
-		if yes { // 是分表字段, 则报错. 分表字段不能使用IN
+		if visitorTable != nil { // 是分表字段, 则报错. 分表字段不能使用IN
 			return fmt.Errorf("分表字段:%s, 不允许使用IN(xx, yy)", columnNameExpr.Name.Name.O)
 		}
 	}
@@ -305,11 +319,11 @@ func (this *SelectVisitor) leavePatternLikeExpr(node *ast.PatternLikeExpr) error
 
 	if columnNameExpr, ok := node.Expr.(*ast.ColumnNameExpr); ok {
 		// 判断该字段是否是分表字段
-		yes, err := this.CurrVisitorStmt.IsShardColumn(&this.DefaultSchema, columnNameExpr)
+		visitorTable, err := this.CurrVisitorStmt.GetVisitorTableIfIsShardCol(&this.DefaultSchema, columnNameExpr)
 		if err != nil {
 			return err
 		}
-		if yes { // 是分表字段, 则报错. 分表字段不能使用IN
+		if visitorTable != nil { // 是分表字段, 则报错. 分表字段不能使用IN
 			return fmt.Errorf("分表字段:%s, 不允许使用LIKE 'xx'", columnNameExpr.Name.Name.O)
 		}
 	}
@@ -332,11 +346,11 @@ func (this *SelectVisitor) leaveBetweenExpr(node *ast.BetweenExpr) error {
 
 	if columnNameExpr, ok := node.Expr.(*ast.ColumnNameExpr); ok {
 		// 判断该字段是否是分表字段
-		yes, err := this.CurrVisitorStmt.IsShardColumn(&this.DefaultSchema, columnNameExpr)
+		visitorTable, err := this.CurrVisitorStmt.GetVisitorTableIfIsShardCol(&this.DefaultSchema, columnNameExpr)
 		if err != nil {
 			return err
 		}
-		if yes { // 是分表字段, 则报错. 分表字段不能使用IN
+		if visitorTable != nil { // 是分表字段, 则报错. 分表字段不能使用IN
 			return fmt.Errorf("分表字段:%s, 不允许使用BETWEEN xx AND yy", columnNameExpr.Name.Name.O)
 		}
 	}
