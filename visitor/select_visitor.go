@@ -11,7 +11,6 @@ import (
 type SelectVisitor struct {
 	ctx             *dal_context.DalContext
 	DefaultSchema   string // dal提供链接的 数据库名
-	IsShard         bool   // 是否有分表
 	CurrNodeLevel   int    // 当前节点所在层级
 	Err             error
 	VisitorStmtMap  map[int]*VisitorStmt // key: stmtNo(第几条语句), value: *VisitorStmt
@@ -24,15 +23,9 @@ type SelectVisitor struct {
 }
 
 func NewSelectVisitor(ctx *dal_context.DalContext) *SelectVisitor {
-	var isShard bool
-	if ctx.ShardTableInstance.ShardTableCnt != 0 { // 如果有设置分表这代表是分库分表
-		isShard = true
-	}
-
 	return &SelectVisitor{
 		DefaultSchema:  ctx.ServerCtx.DBName,
 		ctx:            ctx,
-		IsShard:        isShard,
 		VisitorStmtMap: make(map[int]*VisitorStmt),
 		StmtNoHeap:     utils.NewIntHeap(),
 		BlockHeap:      utils.NewIntHeap(),
@@ -92,8 +85,6 @@ func (this *SelectVisitor) Enter(in ast.Node) (out ast.Node, skipChildren bool) 
 		this.Err = this.enterSelectStmt(node)
 	case *ast.FieldList:
 		this.Err = this.enterFieldList(node)
-	case *ast.TableRefsClause:
-		this.Err = this.enterTableRefsClause(node)
 	case *ast.TableSource:
 		this.Err = this.enterTableSource(node)
 	case *ast.BinaryOperationExpr:
@@ -125,8 +116,6 @@ func (this *SelectVisitor) Leave(in ast.Node) (out ast.Node, ok bool) {
 		this.Err = this.leaveSelectStmt(node)
 	case *ast.FieldList:
 		this.Err = this.leaveFieldList(node)
-	case *ast.TableRefsClause:
-		this.Err = this.leaveTableRefsClause(node)
 	case *ast.TableSource:
 		this.Err = this.leaveTableSource(node)
 	case *ast.BinaryOperationExpr:
@@ -171,20 +160,6 @@ func (this *SelectVisitor) enterFieldList(node *ast.FieldList) error {
 
 // 离开 Select Field 节点
 func (this *SelectVisitor) leaveFieldList(node *ast.FieldList) error {
-	defer this.popBlock()
-
-	return nil
-}
-
-// 进入 from table 语句块中
-func (this *SelectVisitor) enterTableRefsClause(node *ast.TableRefsClause) error {
-	this.setCurrBlock(BLOCK_TABLE_REF_CLAUSE)
-
-	return nil
-}
-
-// 离开 from table 语句块中
-func (this *SelectVisitor) leaveTableRefsClause(node *ast.TableRefsClause) error {
 	defer this.popBlock()
 
 	return nil
