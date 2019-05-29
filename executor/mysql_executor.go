@@ -67,7 +67,7 @@ func (this *MySQLExecutor) HandleQuery(query *string) (*mysql.Result, error) {
 	case *ast.InsertStmt:
 		return this.doInsertStmt(query, stmt)
 	case *ast.DeleteStmt:
-		return nil, fmt.Errorf("Error: DeleteStmt")
+		return this.doDeleteStmt(query, stmt)
 	case *ast.UpdateStmt:
 		return nil, fmt.Errorf("Error: UpdateStmt")
 	case *ast.ShowStmt:
@@ -293,5 +293,45 @@ func (this *MySQLExecutor) doInsertValuesStmtShard(query *string, stmt *ast.Inse
 		sqlStr := fmt.Sprintf(sb.String(), shardNo)
 		fmt.Println("最终需要执行的sql:", sqlStr)
 	}
+	return nil, nil
+}
+
+// 操作 insert 语句
+func (this *MySQLExecutor) doDeleteStmt(query *string, stmt *ast.DeleteStmt) (*mysql.Result, error) {
+	vst := visitor.NewDeleteVisitor(this.ctx)
+	stmt.Accept(vst)
+	if vst.Err != nil {
+		return nil, vst.Err
+	}
+
+	var sqlStr string
+	// 判断是不是分库分表语句
+	if len(vst.VisitorStmtMap) != 0 { // 是分库分表
+		// 获取分表的字段并且计算所在的shard
+		var computShardNoOk bool
+		for _, visitorStmt := range vst.VisitorStmtMap {
+			if shardNo, ok := visitorStmt.GetShardNo(this.ctx.ShardAlgorithm); ok { // 是分表就执行sql
+				var sb strings.Builder
+				if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
+					return nil, fmt.Errorf("DELETE FROM (shard) 从写SQL失败. %s", fmt.Sprintf(*query))
+				}
+				sqlStr = fmt.Sprintf(sb.String(), shardNo)
+				computShardNoOk = true
+				break
+			}
+		}
+		if !computShardNoOk { // 计算分片好失败
+			return nil, fmt.Errorf("DELETE FROM (shard) 无法从分表字段中计算出(分片号), 请检查提供的字段是否完整.")
+		}
+	} else { // 非分库分表的情况
+		var sb strings.Builder
+		if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
+			return nil, fmt.Errorf("DELETE FROM (非shard) 从写SQL失败. %s", fmt.Sprintf(*query))
+		}
+		sqlStr = fmt.Sprintf(sb.String())
+	}
+
+	fmt.Println("最终需要执行的sql:", sqlStr)
+
 	return nil, nil
 }
