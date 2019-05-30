@@ -30,6 +30,15 @@ func NewMySQLExecutor(ctx *dal_context.DalContext) *MySQLExecutor {
 	}
 }
 
+// 清理执行器中的资源
+func (this *MySQLExecutor) Clean() error {
+	if this.InTransaction {
+		this.connMgr.Rollback()
+	}
+
+	return this.connMgr.Close()
+}
+
 // 处理SQL语句
 func (this *MySQLExecutor) HandleQuery(query *string) (*mysql.Result, error) {
 	ps := parser.New()
@@ -411,6 +420,7 @@ func (this *MySQLExecutor) doSetStmt(query *string, stmt *ast.SetStmt) (*mysql.R
 				this.AutoCommit = false
 			} else {
 				this.AutoCommit = true
+				this.connMgr.Commit()
 			}
 		default:
 			return nil, fmt.Errorf("不支持 set %s 语句", variable.Name)

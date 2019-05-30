@@ -55,3 +55,12 @@ func (this *DalHandler) HandleStmtClose(context interface{}) error {
 func (this *DalHandler) HandleOtherCommand(cmd byte, data []byte) error {
 	return fmt.Errorf("not supported now. HandleOtherCommand")
 }
+
+// 清理dal相关资源
+func (this *DalHandler) Clean() error {
+	if err := this.mExec.Clean(); err != nil {
+		return err
+	}
+
+	return nil
+}

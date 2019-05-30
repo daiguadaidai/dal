@@ -177,11 +177,11 @@ func (this *MySQLPool) Close() {
 	}
 }
 
-func (this *MySQLPool) incrNumOpen() {
+func (this *MySQLPool) IncrNumOpen() {
 	atomic.AddInt32(&this.numOpen, 1)
 }
 
-func (this *MySQLPool) decrNumOpen() {
+func (this *MySQLPool) DecrNumOpen() {
 	atomic.AddInt32(&this.numOpen, -1)
 }
 
@@ -191,7 +191,7 @@ func (this *MySQLPool) closeConn(conn *client.Conn) error {
 
 	err := conn.Close()
 
-	this.decrNumOpen()
+	this.DecrNumOpen()
 	this.deleteThreadMapItem(threadID)
 
 	return err
@@ -230,12 +230,12 @@ func (this *MySQLPool) Get() (*client.Conn, error) {
 	}
 
 	// 新键资源
-	this.incrNumOpen() // 添加已经使用资源
+	this.IncrNumOpen() // 添加已经使用资源
 	// 新键链接
 	conn, err := client.Connect(this.cfg.addr(), this.cfg.Username, this.cfg.Password, this.cfg.DBName)
 	if err != nil {
 		this.Unlock()
-		this.decrNumOpen() // 链接没有成功删除已经使用资源
+		this.DecrNumOpen() // 链接没有成功删除已经使用资源
 		return nil, fmt.Errorf("链接数据库出错: %s", err.Error())
 	}
 

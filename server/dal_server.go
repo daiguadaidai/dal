@@ -41,7 +41,8 @@ func createHandler(c net.Conn, ctx *dal_context.DalContext) {
 		}
 		fmt.Println("=== ", i, " ===. conn closed:", conn.Closed())
 		if conn.Closed() {
-			seelog.Infof("客户端[%s]关闭和Dal服务[%s]的链接", c.RemoteAddr(), c.LocalAddr())
+			dalHandler.
+				seelog.Infof("客户端[%s]关闭和Dal服务[%s]的链接", c.RemoteAddr(), c.LocalAddr())
 			break
 		}
 	}
