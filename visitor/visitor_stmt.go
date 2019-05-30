@@ -66,7 +66,7 @@ func (this *VisitorStmt) GetVisitorTableIfIsShardCol(defaultSchema *string, colu
 			}
 			return nil, nil
 		} else { // 如果有多个表, 字段名前面必须要带上(表名/别名)
-			return nil, fmt.Errorf("语句中有多个表, 因此谓词字段中必须带上(表名/别名), 如: t1.name = 1 AND t2.name=2")
+			return nil, fmt.Errorf("语句中有多个表, 因此谓词字段中必须带上(表名/别名), 如: WHERE t1.name = 1 AND t2.name=2")
 		}
 	} else { // 有表别名的情况
 		key := utils.GetShardTableKey(defaultSchema, &columnNameExpr.Name.Schema.O, &columnNameExpr.Name.Table.O)
@@ -74,6 +74,32 @@ func (this *VisitorStmt) GetVisitorTableIfIsShardCol(defaultSchema *string, colu
 			return nil, nil
 		} else { // 字段属于分表, 进一步判断字段是不是分表需要的字段
 			if _, ok1 := visitorTable.ShardTable.ShardColMap[columnNameExpr.Name.Name.O]; ok1 {
+				return visitorTable, nil
+			}
+			return nil, nil
+		}
+	}
+
+	return nil, nil
+}
+
+// 判断列是否存在, SET col1 = 1, col2 = 2
+func (this *VisitorStmt) GetVisitorTableIfIsShardColByColumnName(defaultSchema *string, columnName *ast.ColumnName) (*VisitorTable, error) {
+	if columnName.Table.O == "" { // 没有指定表名
+		if this.TableCnt == 1 { // 如果只有一个表, 直接默认就使用这个表的所有信息
+			if _, ok := this.FirstVisitorTable.ShardTable.ShardColMap[columnName.Name.O]; ok {
+				return this.FirstVisitorTable, nil
+			}
+			return nil, nil
+		} else { // 如果有多个表, 字段名前面必须要带上(表名/别名)
+			return nil, fmt.Errorf("语句中有多个表, 因此谓词字段中必须带上(表名/别名), 如: SET t1.name = 1, t2.name=2")
+		}
+	} else { // 有表别名的情况
+		key := utils.GetShardTableKey(defaultSchema, &columnName.Schema.O, &columnName.Table.O)
+		if visitorTable, ok := this.VisitorTableMap[key]; !ok { // 字段不属于分表
+			return nil, nil
+		} else { // 字段属于分表, 进一步判断字段是不是分表需要的字段
+			if _, ok1 := visitorTable.ShardTable.ShardColMap[columnName.Name.O]; ok1 {
 				return visitorTable, nil
 			}
 			return nil, nil

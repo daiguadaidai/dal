@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"github.com/daiguadaidai/dal/dal_context"
 	"github.com/daiguadaidai/dal/go-mysql/mysql"
+	"github.com/daiguadaidai/dal/utils"
 	"github.com/daiguadaidai/dal/visitor"
 	"github.com/daiguadaidai/parser"
 	"github.com/daiguadaidai/parser/ast"
 	"github.com/daiguadaidai/parser/format"
-	_ "github.com/daiguadaidai/tidb/types/parser_driver"
+	driver "github.com/daiguadaidai/tidb/types/parser_driver"
 	"strings"
 )
 
@@ -61,7 +62,7 @@ func (this *MySQLExecutor) HandleQuery(query *string) (*mysql.Result, error) {
 	case *ast.SelectStmt:
 		return this.doSelectStmt(query, stmt)
 	case *ast.UnionStmt:
-		return nil, fmt.Errorf("Error: UnionStmt")
+		return nil, fmt.Errorf("Error: 不支持(Union)类型语句, UnionStmt. %s", *query)
 	case *ast.LoadDataStmt:
 		return nil, fmt.Errorf("Error: 不支持(Load)加载数据, LoadDataStmt. %s", *query)
 	case *ast.InsertStmt:
@@ -69,7 +70,7 @@ func (this *MySQLExecutor) HandleQuery(query *string) (*mysql.Result, error) {
 	case *ast.DeleteStmt:
 		return this.doDeleteStmt(query, stmt)
 	case *ast.UpdateStmt:
-		return nil, fmt.Errorf("Error: UpdateStmt")
+		return this.doUpdateStmt(query, stmt)
 	case *ast.ShowStmt:
 		return nil, fmt.Errorf("Error: 不支持(show)操作, ShowStmt. %s", *query)
 	case *ast.TraceStmt:
@@ -81,15 +82,15 @@ func (this *MySQLExecutor) HandleQuery(query *string) (*mysql.Result, error) {
 	case *ast.DeallocateStmt:
 		return nil, fmt.Errorf("Error: 不支持(重新分配)操作, DeallocateStmt. %s", *query)
 	case *ast.ExecuteStmt:
-		return nil, fmt.Errorf("Error: ExecuteStmt")
+		return nil, fmt.Errorf("Error: 不支持(Execute)操作, ExecuteStmt. %s", *query)
 	case *ast.BeginStmt:
-		return nil, fmt.Errorf("Error: beginStmt")
+		return this.doBegin(query, stmt)
 	case *ast.BinlogStmt:
 		return nil, fmt.Errorf("Error: 不支持(binlog)操作, BinlogStmt. %s", *query)
 	case *ast.CommitStmt:
-		return nil, fmt.Errorf("Error: CommitStmt")
+		return this.doCommitStmt(query, stmt)
 	case *ast.RollbackStmt:
-		return nil, fmt.Errorf("Error: RollbackStmt")
+		return this.doRollbackStmt(query, stmt)
 	case *ast.UseStmt:
 		return nil, this.UseDB(&stmt.DBName)
 	case *ast.FlushStmt:
@@ -97,7 +98,7 @@ func (this *MySQLExecutor) HandleQuery(query *string) (*mysql.Result, error) {
 	case *ast.KillStmt:
 		return nil, fmt.Errorf("Error: 不支持(kill)操作, KillStmt. %s", *query)
 	case *ast.SetStmt:
-		return nil, fmt.Errorf("Error: 不支持(set)操作, SetStmt. %s", *query)
+		return this.doSetStmt(query, stmt)
 	case *ast.SetPwdStmt:
 		return nil, fmt.Errorf("Error: 不支持(set password)操作, SetPwdStmt. %s", *query)
 	case *ast.CreateUserStmt:
@@ -175,7 +176,7 @@ func (this *MySQLExecutor) doSelectStmt(query *string, stmt *ast.SelectStmt) (*m
 			if shardNo, ok := visitorStmt.GetShardNo(this.ctx.ShardAlgorithm); ok { // 是分表就执行sql
 				var sb strings.Builder
 				if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
-					return nil, fmt.Errorf("SELECT (shard) 从写SQL失败. %s", fmt.Sprintf(*query))
+					return nil, fmt.Errorf("SELECT (shard) 从写SQL失败. %s", err.Error())
 				}
 				sqlStr = fmt.Sprintf(sb.String(), shardNo)
 				computShardNoOk = true
@@ -188,7 +189,7 @@ func (this *MySQLExecutor) doSelectStmt(query *string, stmt *ast.SelectStmt) (*m
 	} else { // 非分库分表的情况
 		var sb strings.Builder
 		if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
-			return nil, fmt.Errorf("SELECT (非shard) 从写SQL失败. %s", fmt.Sprintf(*query))
+			return nil, fmt.Errorf("SELECT (非shard) 从写SQL失败. %s", err.Error())
 		}
 		sqlStr = fmt.Sprintf(sb.String())
 	}
@@ -237,7 +238,7 @@ func (this *MySQLExecutor) doInsertSelectStmt(query *string, stmt *ast.InsertStm
 			if shardNo, ok := visitorStmt.GetShardNo(this.ctx.ShardAlgorithm); ok { // 是分表就执行sql
 				var sb strings.Builder
 				if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
-					return nil, fmt.Errorf("INSERT INTO SELECT (shard) 从写SQL失败. %s", fmt.Sprintf(*query))
+					return nil, fmt.Errorf("INSERT INTO SELECT (shard) 从写SQL失败. %s", err.Error())
 				}
 				sqlStr = fmt.Sprintf(sb.String(), shardNo)
 				computShardNoOk = true
@@ -250,7 +251,7 @@ func (this *MySQLExecutor) doInsertSelectStmt(query *string, stmt *ast.InsertStm
 	} else { // 非分库分表的情况
 		var sb strings.Builder
 		if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
-			return nil, fmt.Errorf("INSERT INTO SELECT (非shard) 从写SQL失败. %s", fmt.Sprintf(*query))
+			return nil, fmt.Errorf("INSERT INTO SELECT (非shard) 从写SQL失败. %s", err.Error())
 		}
 		sqlStr = fmt.Sprintf(sb.String())
 	}
@@ -263,7 +264,7 @@ func (this *MySQLExecutor) doInsertSelectStmt(query *string, stmt *ast.InsertStm
 func (this *MySQLExecutor) doInsertValuesStmt(query *string, stmt *ast.InsertStmt, vst *visitor.InsertValuesVisitor) (*mysql.Result, error) {
 	var sb strings.Builder
 	if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
-		return nil, fmt.Errorf("INSERT INTO VALUES (非shard) 从写SQL失败. %s", fmt.Sprintf(*query))
+		return nil, fmt.Errorf("INSERT INTO VALUES (非shard) 从写SQL失败. %s", err.Error())
 	}
 	sqlStr := fmt.Sprintf(sb.String())
 	fmt.Println("最终需要执行的sql:", sqlStr)
@@ -288,7 +289,7 @@ func (this *MySQLExecutor) doInsertValuesStmtShard(query *string, stmt *ast.Inse
 
 		var sb strings.Builder
 		if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
-			return nil, fmt.Errorf("INSERT INTO VALUES (shard) 从写SQL失败. %s", fmt.Sprintf(*query))
+			return nil, fmt.Errorf("INSERT INTO VALUES (shard) 从写SQL失败. %s", err.Error())
 		}
 		sqlStr := fmt.Sprintf(sb.String(), shardNo)
 		fmt.Println("最终需要执行的sql:", sqlStr)
@@ -296,7 +297,7 @@ func (this *MySQLExecutor) doInsertValuesStmtShard(query *string, stmt *ast.Inse
 	return nil, nil
 }
 
-// 操作 insert 语句
+// 操作 delete 语句
 func (this *MySQLExecutor) doDeleteStmt(query *string, stmt *ast.DeleteStmt) (*mysql.Result, error) {
 	vst := visitor.NewDeleteVisitor(this.ctx)
 	stmt.Accept(vst)
@@ -313,7 +314,7 @@ func (this *MySQLExecutor) doDeleteStmt(query *string, stmt *ast.DeleteStmt) (*m
 			if shardNo, ok := visitorStmt.GetShardNo(this.ctx.ShardAlgorithm); ok { // 是分表就执行sql
 				var sb strings.Builder
 				if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
-					return nil, fmt.Errorf("DELETE FROM (shard) 从写SQL失败. %s", fmt.Sprintf(*query))
+					return nil, fmt.Errorf("DELETE FROM (shard) 从写SQL失败. %s", err.Error())
 				}
 				sqlStr = fmt.Sprintf(sb.String(), shardNo)
 				computShardNoOk = true
@@ -326,12 +327,94 @@ func (this *MySQLExecutor) doDeleteStmt(query *string, stmt *ast.DeleteStmt) (*m
 	} else { // 非分库分表的情况
 		var sb strings.Builder
 		if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
-			return nil, fmt.Errorf("DELETE FROM (非shard) 从写SQL失败. %s", fmt.Sprintf(*query))
+			return nil, fmt.Errorf("DELETE FROM (非shard) 从写SQL失败. %s", err.Error())
 		}
 		sqlStr = fmt.Sprintf(sb.String())
 	}
 
 	fmt.Println("最终需要执行的sql:", sqlStr)
 
+	return nil, nil
+}
+
+// 操作 update 语句
+func (this *MySQLExecutor) doUpdateStmt(query *string, stmt *ast.UpdateStmt) (*mysql.Result, error) {
+	vst := visitor.NewUpdateVisitor(this.ctx)
+	stmt.Accept(vst)
+	if vst.Err != nil {
+		return nil, vst.Err
+	}
+
+	var sqlStr string
+	// 判断是不是分库分表语句
+	if len(vst.VisitorStmtMap) != 0 { // 是分库分表
+		// 获取分表的字段并且计算所在的shard
+		var computShardNoOk bool
+		for _, visitorStmt := range vst.VisitorStmtMap {
+			if shardNo, ok := visitorStmt.GetShardNo(this.ctx.ShardAlgorithm); ok { // 是分表就执行sql
+				var sb strings.Builder
+				if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
+					return nil, fmt.Errorf("UPDATE (shard) 从写SQL失败. %s", err.Error())
+				}
+				sqlStr = fmt.Sprintf(sb.String(), shardNo)
+				computShardNoOk = true
+				break
+			}
+		}
+		if !computShardNoOk { // 计算分片好失败
+			return nil, fmt.Errorf("UPDATE (shard) 无法从分表字段中计算出(分片号), 请检查提供的字段是否完整.")
+		}
+	} else { // 非分库分表的情况
+		var sb strings.Builder
+		if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
+			return nil, fmt.Errorf("UPDATE (非shard) 从写SQL失败. %s", err.Error())
+		}
+		sqlStr = fmt.Sprintf(sb.String())
+	}
+
+	fmt.Println("最终需要执行的sql:", sqlStr)
+
+	return nil, nil
+}
+
+// 执行 commit
+func (this *MySQLExecutor) doCommitStmt(query *string, stmt *ast.CommitStmt) (*mysql.Result, error) {
+	return nil, nil
+}
+
+// 执行 rollback
+func (this *MySQLExecutor) doRollbackStmt(query *string, stmt *ast.RollbackStmt) (*mysql.Result, error) {
+	return nil, nil
+}
+
+// 执行 Begin
+func (this *MySQLExecutor) doBegin(query *string, stmt *ast.BeginStmt) (*mysql.Result, error) {
+	return nil, nil
+}
+
+// do set 语句
+func (this *MySQLExecutor) doSetStmt(query *string, stmt *ast.SetStmt) (*mysql.Result, error) {
+	for _, variable := range stmt.Variables {
+		value, ok := variable.Value.(*driver.ValueExpr)
+		if !ok {
+			return nil, fmt.Errorf("未能正确解析 SET 语句的值")
+		}
+
+		switch strings.ToLower(variable.Name) {
+		case "autocommit": // 处理 autocommit
+			data, err := utils.InterfaceToInt64(value.GetValue())
+			if err != nil {
+				return nil, fmt.Errorf("SET autocommit = %#v, 无法将右值转化为数字", value.GetValue())
+			}
+
+			if data == 0 {
+				this.AutoCommit = false
+			} else {
+				this.AutoCommit = true
+			}
+		default:
+			return nil, fmt.Errorf("不支持 set %s 语句", variable.Name)
+		}
+	}
 	return nil, nil
 }

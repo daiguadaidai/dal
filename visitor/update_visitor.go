@@ -8,7 +8,7 @@ import (
 	driver "github.com/daiguadaidai/tidb/types/parser_driver"
 )
 
-type DeleteVisitor struct {
+type UpdateVisitor struct {
 	ctx             *dal_context.DalContext
 	DefaultSchema   string // dal提供链接的 数据库名
 	CurrNodeLevel   int    // 当前节点所在层级
@@ -22,8 +22,8 @@ type DeleteVisitor struct {
 	BlockHeap       *utils.IntHeap       // 当前所在语句块栈
 }
 
-func NewDeleteVisitor(ctx *dal_context.DalContext) *DeleteVisitor {
-	return &DeleteVisitor{
+func NewUpdateVisitor(ctx *dal_context.DalContext) *UpdateVisitor {
+	return &UpdateVisitor{
 		DefaultSchema:  ctx.ServerCtx.DBName,
 		ctx:            ctx,
 		VisitorStmtMap: make(map[int]*VisitorStmt),
@@ -34,7 +34,7 @@ func NewDeleteVisitor(ctx *dal_context.DalContext) *DeleteVisitor {
 }
 
 // 计算语句有几个
-func (this *DeleteVisitor) incrStmtNo() {
+func (this *UpdateVisitor) incrStmtNo() {
 	if this.CurrVisitorStmt != nil {
 		this.VisitorStmtMap[this.CurrStmtNo] = this.CurrVisitorStmt
 		this.CurrVisitorStmt = nil
@@ -47,7 +47,7 @@ func (this *DeleteVisitor) incrStmtNo() {
 }
 
 // pop 出语句号, 并计算应该到第几个语句了
-func (this *DeleteVisitor) popStmtNo() {
+func (this *UpdateVisitor) popStmtNo() {
 	this.CurrVisitorStmt = nil
 	if currStmtNo, ok := this.StmtNoHeap.Pop(); ok {
 		this.CurrStmtNo = currStmtNo
@@ -58,19 +58,19 @@ func (this *DeleteVisitor) popStmtNo() {
 }
 
 // 记录当前语句块
-func (this *DeleteVisitor) setCurrBlock(currBlock int) {
+func (this *UpdateVisitor) setCurrBlock(currBlock int) {
 	this.BlockHeap.Push(this.CurrBlock) // 将当前block保存下来
 	this.CurrBlock = currBlock          // 重置当前block
 }
 
 // pop语句块
-func (this *DeleteVisitor) popBlock() {
+func (this *UpdateVisitor) popBlock() {
 	if block, ok := this.BlockHeap.Pop(); ok {
 		this.CurrBlock = block
 	}
 }
 
-func (this *DeleteVisitor) Enter(in ast.Node) (out ast.Node, skipChildren bool) {
+func (this *UpdateVisitor) Enter(in ast.Node) (out ast.Node, skipChildren bool) {
 	// 有错误直接退出
 	if this.Err != nil {
 		return in, true
@@ -81,8 +81,8 @@ func (this *DeleteVisitor) Enter(in ast.Node) (out ast.Node, skipChildren bool) 
 	fmt.Printf("%sEnter: %[2]T, %[2]v, %[2]p\n", utils.GetIntend(this.CurrNodeLevel-1, " ", 4), in)
 
 	switch node := in.(type) {
-	case *ast.DeleteStmt:
-		this.Err = this.enterDeleteStmt(node)
+	case *ast.UpdateStmt:
+		this.Err = this.enterUpdateStmt(node)
 	case *ast.SelectStmt:
 		this.Err = this.enterSelectStmt(node)
 	case *ast.FieldList:
@@ -97,12 +97,14 @@ func (this *DeleteVisitor) Enter(in ast.Node) (out ast.Node, skipChildren bool) 
 		this.Err = this.enterPatternLikeExpr(node)
 	case *ast.BetweenExpr: // a BETWEEN b AND c
 		this.Err = this.enterBetweenExpr(node)
+	case *ast.Assignment:
+		this.Err = this.enterAssignment(node)
 	}
 
 	return in, false
 }
 
-func (this *DeleteVisitor) Leave(in ast.Node) (out ast.Node, ok bool) {
+func (this *UpdateVisitor) Leave(in ast.Node) (out ast.Node, ok bool) {
 	defer func() {
 		this.CurrNodeLevel--
 	}()
@@ -114,8 +116,8 @@ func (this *DeleteVisitor) Leave(in ast.Node) (out ast.Node, ok bool) {
 
 	fmt.Printf("%sLeave: %T, %[2]p\n", utils.GetIntend(this.CurrNodeLevel-1, " ", 4), in)
 	switch node := in.(type) {
-	case *ast.DeleteStmt:
-		this.Err = this.leaveDeleteStmt(node)
+	case *ast.UpdateStmt:
+		this.Err = this.leaveUpdateStmt(node)
 	case *ast.SelectStmt:
 		this.Err = this.leaveSelectStmt(node)
 	case *ast.FieldList:
@@ -130,21 +132,23 @@ func (this *DeleteVisitor) Leave(in ast.Node) (out ast.Node, ok bool) {
 		this.Err = this.leavePatternLikeExpr(node)
 	case *ast.BetweenExpr: // a BETWEEN b AND c
 		this.Err = this.leaveBetweenExpr(node)
+	case *ast.Assignment:
+		this.Err = this.leaveAssignment(node)
 	}
 
 	return in, true
 }
 
-// 进入 *ast.DeleteStmt 节点
-func (this *DeleteVisitor) enterDeleteStmt(node *ast.DeleteStmt) error {
+// 进入 *ast.UpdateStmt 节点
+func (this *UpdateVisitor) enterUpdateStmt(node *ast.UpdateStmt) error {
 	// 计算语句号, 计算语句有几个
 	this.incrStmtNo()
 
 	return nil
 }
 
-// 离开 *ast.DeleteStmt 节点
-func (this *DeleteVisitor) leaveDeleteStmt(node *ast.DeleteStmt) error {
+// 离开 *ast.UpdateStmt 节点
+func (this *UpdateVisitor) leaveUpdateStmt(node *ast.UpdateStmt) error {
 	// pop 出语句号, 并计算应该到第几个语句了
 	defer this.popStmtNo()
 
@@ -157,14 +161,14 @@ func (this *DeleteVisitor) leaveDeleteStmt(node *ast.DeleteStmt) error {
 }
 
 // 进入 *ast.SelectStmt 节点
-func (this *DeleteVisitor) enterSelectStmt(node *ast.SelectStmt) error {
+func (this *UpdateVisitor) enterSelectStmt(node *ast.SelectStmt) error {
 	// 计算语句号, 计算语句有几个
 	this.incrStmtNo()
 	return nil
 }
 
 // 离开 *ast.SelectStmt 节点
-func (this *DeleteVisitor) leaveSelectStmt(node *ast.SelectStmt) error {
+func (this *UpdateVisitor) leaveSelectStmt(node *ast.SelectStmt) error {
 	// pop 出语句号, 并计算应该到第几个语句了
 	defer this.popStmtNo()
 
@@ -177,21 +181,21 @@ func (this *DeleteVisitor) leaveSelectStmt(node *ast.SelectStmt) error {
 }
 
 // 进入 Select Field 节点(SELECT block)
-func (this *DeleteVisitor) enterFieldList(node *ast.FieldList) error {
+func (this *UpdateVisitor) enterFieldList(node *ast.FieldList) error {
 	this.setCurrBlock(BLOCK_SELECT)
 
 	return nil
 }
 
 // 离开 Select Field 节点
-func (this *DeleteVisitor) leaveFieldList(node *ast.FieldList) error {
+func (this *UpdateVisitor) leaveFieldList(node *ast.FieldList) error {
 	defer this.popBlock()
 
 	return nil
 }
 
 // 进入 TableSource
-func (this *DeleteVisitor) enterTableSource(node *ast.TableSource) error {
+func (this *UpdateVisitor) enterTableSource(node *ast.TableSource) error {
 	// 判断该表是否是分表
 	tableName, ok := node.Source.(*ast.TableName)
 	if ok {
@@ -213,7 +217,7 @@ func (this *DeleteVisitor) enterTableSource(node *ast.TableSource) error {
 }
 
 // 离开 TableSource
-func (this *DeleteVisitor) leaveTableSource(node *ast.TableSource) error {
+func (this *UpdateVisitor) leaveTableSource(node *ast.TableSource) error {
 	// 当前语句没有分表信息, 直接退出
 	if this.CurrVisitorStmt == nil {
 		return nil
@@ -231,14 +235,14 @@ func (this *DeleteVisitor) leaveTableSource(node *ast.TableSource) error {
 }
 
 // 进入含有类似 a = 1, b = 2. 的语句块中.
-func (this *DeleteVisitor) enterBinaryOperationExpr(node *ast.BinaryOperationExpr) error {
+func (this *UpdateVisitor) enterBinaryOperationExpr(node *ast.BinaryOperationExpr) error {
 	this.setCurrBlock(BLOCK_WHERE)
 
 	return nil
 }
 
 // 出 BinaryOperationExpr 节点
-func (this *DeleteVisitor) leaveBinaryOperationExpr(node *ast.BinaryOperationExpr) error {
+func (this *UpdateVisitor) leaveBinaryOperationExpr(node *ast.BinaryOperationExpr) error {
 	defer this.popBlock()
 	if this.CurrVisitorStmt == nil { // 如果该语句中没有分库分表, 就不用管了
 		return nil
@@ -277,13 +281,13 @@ func (this *DeleteVisitor) leaveBinaryOperationExpr(node *ast.BinaryOperationExp
 }
 
 // 进入 IN 语句
-func (this *DeleteVisitor) enterPatternInExpr(node *ast.PatternInExpr) error {
+func (this *UpdateVisitor) enterPatternInExpr(node *ast.PatternInExpr) error {
 	this.setCurrBlock(BLOCK_PATTERN_IN)
 	return nil
 }
 
 // 离开 IN 语句
-func (this *DeleteVisitor) leavePatternInExpr(node *ast.PatternInExpr) error {
+func (this *UpdateVisitor) leavePatternInExpr(node *ast.PatternInExpr) error {
 	defer this.popBlock()
 	if this.CurrVisitorStmt == nil { // 如果该语句中没有分库分表, 就不用管了
 		return nil
@@ -304,14 +308,14 @@ func (this *DeleteVisitor) leavePatternInExpr(node *ast.PatternInExpr) error {
 }
 
 // 进入 Like 语句
-func (this *DeleteVisitor) enterPatternLikeExpr(node *ast.PatternLikeExpr) error {
+func (this *UpdateVisitor) enterPatternLikeExpr(node *ast.PatternLikeExpr) error {
 	this.setCurrBlock(BLOCK_PATTERN_LIKE)
 
 	return nil
 }
 
 // 离开 Like 语句
-func (this *DeleteVisitor) leavePatternLikeExpr(node *ast.PatternLikeExpr) error {
+func (this *UpdateVisitor) leavePatternLikeExpr(node *ast.PatternLikeExpr) error {
 	defer this.popBlock()
 	if this.CurrVisitorStmt == nil { // 如果该语句中没有分库分表, 就不用管了
 		return nil
@@ -332,13 +336,13 @@ func (this *DeleteVisitor) leavePatternLikeExpr(node *ast.PatternLikeExpr) error
 }
 
 // 进入 BETWEEN 语句
-func (this *DeleteVisitor) enterBetweenExpr(node *ast.BetweenExpr) error {
+func (this *UpdateVisitor) enterBetweenExpr(node *ast.BetweenExpr) error {
 	this.setCurrBlock(BLOCK_BETWEEN)
 	return nil
 }
 
 // 离开 BETWEEN 语句
-func (this *DeleteVisitor) leaveBetweenExpr(node *ast.BetweenExpr) error {
+func (this *UpdateVisitor) leaveBetweenExpr(node *ast.BetweenExpr) error {
 	defer this.popBlock()
 	if this.CurrVisitorStmt == nil { // 如果该语句中没有分库分表, 就不用管了
 		return nil
@@ -353,6 +357,30 @@ func (this *DeleteVisitor) leaveBetweenExpr(node *ast.BetweenExpr) error {
 		if visitorTable != nil { // 是分表字段, 则报错. 分表字段不能使用IN
 			return fmt.Errorf("分表字段:%s, 不允许使用BETWEEN xx AND yy", columnNameExpr.Name.Name.O)
 		}
+	}
+
+	return nil
+}
+
+// 进入 SET col1 = 1, col2 = 2
+func (this *UpdateVisitor) enterAssignment(node *ast.Assignment) error {
+
+	return nil
+}
+
+// 离开 SET col1 = 1, col2 = 2
+func (this *UpdateVisitor) leaveAssignment(node *ast.Assignment) error {
+	if this.CurrVisitorStmt == nil { // 如果该语句中没有分库分表, 就不用管了
+		return nil
+	}
+
+	// 判断该字段是否是分表字段
+	visitorTable, err := this.CurrVisitorStmt.GetVisitorTableIfIsShardColByColumnName(&this.DefaultSchema, node.Column)
+	if err != nil {
+		return err
+	}
+	if visitorTable != nil { // 该字段不是分表计算字段
+		return fmt.Errorf("分片字段不支持修改值, 字段: %s", node.Column.Name.O)
 	}
 
 	return nil
