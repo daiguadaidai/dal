@@ -1,4 +1,4 @@
-package utils
+package compare_sample
 
 import (
 	"strconv"
@@ -16,16 +16,36 @@ func InterfaceToInt64(val interface{}) (int64, error) {
 		return int64(v), nil
 	case int:
 		return int64(v), nil
+	case uint8:
+		return int64(v), nil
+	case uint16:
+		return int64(v), nil
+	case uint32:
+		return int64(v), nil
+	case uint64:
+		return int64(v), nil
+	case uint:
+		return int64(v), nil
 	case string:
-		return strconv.ParseInt(v, 64, 10)
+		return strconv.ParseInt(v, 10, 64)
 	case []byte:
-		return strconv.ParseInt(string(v), 64, 10)
+		return strconv.ParseInt(string(v), 10, 64)
 	}
 	return 0, nil
 }
 
 func InterfaceToUint64(val interface{}) (uint64, error) {
 	switch v := val.(type) {
+	case int8:
+		return uint64(v), nil
+	case int16:
+		return uint64(v), nil
+	case int32:
+		return uint64(v), nil
+	case int64:
+		return uint64(v), nil
+	case int:
+		return uint64(v), nil
 	case uint8:
 		return uint64(v), nil
 	case uint16:
@@ -37,25 +57,35 @@ func InterfaceToUint64(val interface{}) (uint64, error) {
 	case uint:
 		return uint64(v), nil
 	case string:
-		return strconv.ParseUint(v, 64, 10)
+		return strconv.ParseUint(v, 10, 64)
 	case []byte:
-		return strconv.ParseUint(string(v), 64, 10)
+		return strconv.ParseUint(string(v), 10, 64)
 	}
 	return 0, nil
 }
 
 func InterfaceToStr(val interface{}) string {
 	switch v := val.(type) {
+	case int8:
+		return strconv.FormatInt(int64(v), 10)
+	case int16:
+		return strconv.FormatInt(int64(v), 10)
+	case int32:
+		return strconv.FormatInt(int64(v), 10)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case int:
+		return strconv.FormatInt(int64(v), 10)
 	case uint8:
-		return string(v)
+		return strconv.FormatUint(uint64(v), 10)
 	case uint16:
-		return string(v)
+		return strconv.FormatUint(uint64(v), 10)
 	case uint32:
-		return string(v)
+		return strconv.FormatUint(uint64(v), 10)
 	case uint64:
-		return string(v)
+		return strconv.FormatUint(v, 10)
 	case uint:
-		return string(v)
+		return strconv.FormatUint(uint64(v), 10)
 	case string:
 		return v
 	case []byte:
