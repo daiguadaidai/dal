@@ -129,12 +129,19 @@ func (this *MySQLGroup) GetReadNode() (*MySQLNode, error) {
 }
 
 // 获取写节点
-func (this *MySQLGroup) GetWriteNode() (*MySQLNode, bool) {
+func (this *MySQLGroup) GetWriteNode() (*MySQLNode, error) {
+	if strings.TrimSpace(this.Master) == "" {
+		return nil, fmt.Errorf("组:%d, Master不存在", this.Gno)
+	}
+
 	this.RLock()
 	defer this.RUnlock()
 
 	master, ok := this.nodes[this.Master]
-	return master, ok
+	if !ok {
+		return nil, fmt.Errorf("组:%d, Master[%s]不存在", this.Gno, this.Master)
+	}
+	return master, nil
 }
 
 // 通过指定key获取节点

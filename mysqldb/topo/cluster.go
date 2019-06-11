@@ -2,6 +2,7 @@ package topo
 
 import (
 	"fmt"
+	"github.com/cihub/seelog"
 	"github.com/daiguadaidai/dal/utils"
 	"sync"
 )
@@ -10,6 +11,7 @@ type MySQLCluster struct {
 	sync.RWMutex
 	shardGroupMap map[int]int         // 分片对应的组Map key: shard 号, value: 组号 Gno
 	groups        map[int]*MySQLGroup // key: Gno, value: MySQLGroup
+	groupSize     int                 // 一共有多少个group
 }
 
 func DefaultMySQLCluster() *MySQLCluster {
@@ -21,6 +23,11 @@ func DefaultMySQLCluster() *MySQLCluster {
 
 func (this *MySQLCluster) AddGroup(group *MySQLGroup) {
 	this.groups[group.Gno] = group
+	this.groupSize++
+}
+
+func (this *MySQLCluster) GroupSize() int {
+	return this.groupSize
 }
 
 // 初始化 shard对应group
@@ -32,11 +39,6 @@ func (this *MySQLCluster) InitShardGroup() {
 	// 需要生成一个临时的tmpGroup主要是为了防止有死锁的情况, 在操作group的时候相关资源也是有加锁的
 	for _, group := range tmpGroups {
 		shardNoMap := group.GetShardNoMap()
-		// 如果group没有分片信息 默认设置分片信息为 -1
-		if len(shardNoMap) == 0 {
-			shardGroupMap[-1] = group.Gno
-			continue
-		}
 		for key, _ := range shardNoMap {
 			shardGroupMap[key] = group.Gno
 		}
@@ -57,6 +59,29 @@ func (this *MySQLCluster) GetReadNodeByShard(shardNo int) (*MySQLNode, error) {
 	return group.GetReadNode()
 }
 
+// 随机获取一个写节点
+func (this *MySQLCluster) GetWriteNodeByRand() (int, *MySQLNode, error) {
+	group, err := this.GetGroupByRand()
+	if err != nil {
+		return -1, nil, err
+	}
+
+	writeNode, err := group.GetWriteNode()
+	if err != nil { // 随机获取写节点, 不成功的时候就循环所有的group获取
+		seelog.Warnf("随机获取组:%d, %s.", group.Gno, err.Error())
+
+		tmpGroups := this.GetGroups()
+		for _, tmpGroup := range tmpGroups {
+			if writeNode, err = tmpGroup.GetWriteNode(); err == nil {
+				return tmpGroup.Gno, writeNode, nil
+			}
+		}
+		return -1, nil, fmt.Errorf("全组扫描, 无法获取到可写几点, 请检查是否没有可写节点.")
+	}
+
+	return group.Gno, writeNode, nil
+}
+
 // 通过分片好来获取指定MySQL写节点
 func (this *MySQLCluster) GetWriteNodeByShard(shardNo int) (*MySQLNode, error) {
 	group, err := this.GetGroupByShard(shardNo)
@@ -64,12 +89,32 @@ func (this *MySQLCluster) GetWriteNodeByShard(shardNo int) (*MySQLNode, error) {
 		return nil, err
 	}
 
-	writeNode, ok := group.GetWriteNode()
-	if !ok {
-		return nil, fmt.Errorf("没有获取到可写节点, 请检查是否没有可写节点.")
+	writeNode, err := group.GetWriteNode()
+	if err != nil {
+		return nil, fmt.Errorf("%s, 请检查是否没有可写节点.", err.Error())
 	}
 
 	return writeNode, nil
+}
+
+/* 获取所有的MySQL节点
+ * return: key: gno, value: mysql节点
+ */
+func (this *MySQLCluster) FindAllWriteNode() (map[int]*MySQLNode, error) {
+	writeNodeMap := make(map[int]*MySQLNode)
+	tmpGroups := this.GetGroups()
+	for _, tmpGroup := range tmpGroups {
+		writeNode, err := tmpGroup.GetWriteNode()
+		if err != nil {
+			seelog.Warnf(err.Error())
+			continue
+		}
+		writeNodeMap[tmpGroup.Gno] = writeNode
+	}
+	if len(writeNodeMap) == 0 {
+		return nil, fmt.Errorf("没有可写节点, 请检查")
+	}
+	return writeNodeMap, nil
 }
 
 // 通过分片好获取组
@@ -86,7 +131,7 @@ func (this *MySQLCluster) GetGroupByShard(shardNo int) (*MySQLGroup, error) {
 func (this *MySQLCluster) GetGnoByRand() int {
 	this.RLock()
 	defer this.RUnlock()
-	return utils.GetRandGno(len(this.groups))
+	return utils.GetRandGno(this.groupSize)
 }
 
 // 随机获取一个group
@@ -153,6 +198,16 @@ func (this *MySQLCluster) GetReadNodeByGno(gno int) (*MySQLNode, error) {
 	}
 
 	return group.GetReadNode()
+}
+
+// 获取写节点通过group no
+func (this *MySQLCluster) GetWriteNodeByGno(gno int) (*MySQLNode, error) {
+	group, err := this.GetGroupByGno(gno)
+	if err != nil {
+		return nil, err
+	}
+
+	return group.GetWriteNode()
 }
 
 // 克隆一个cluster, 深拷贝, 除了 node 的pool

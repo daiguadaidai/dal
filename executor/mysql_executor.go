@@ -2,6 +2,7 @@ package executor
 
 import (
 	"fmt"
+	"github.com/cihub/seelog"
 	"github.com/daiguadaidai/dal/dal_context"
 	"github.com/daiguadaidai/dal/go-mysql/mysql"
 	"github.com/daiguadaidai/dal/utils"
@@ -25,18 +26,138 @@ type MySQLExecutor struct {
 
 func NewMySQLExecutor(ctx *dal_context.DalContext) *MySQLExecutor {
 	return &MySQLExecutor{
-		ctx:     ctx,
-		connMgr: NewMySQLConnectionManager(ctx),
+		AutoCommit: true,
+		ctx:        ctx,
+		connMgr:    NewMySQLConnectionManager(ctx),
 	}
 }
 
 // 清理执行器中的资源
 func (this *MySQLExecutor) Clean() error {
 	if this.InTransaction {
-		this.connMgr.Rollback()
+		if err := this.connMgr.WriteConnRollback(); err != nil {
+			seelog.Error(err.Error())
+		}
 	}
 
 	return this.connMgr.Close()
+}
+
+func (this *MySQLExecutor) setIntransaction() {
+	if this.InTransaction { // 已经在事务中了
+		return
+	}
+
+	// 非 自动提交的情况下 设置为在事务中
+	if !this.AutoCommit {
+		this.InTransaction = true
+	}
+}
+
+// 执行 shard 的 SELECT 类型语句
+func (this *MySQLExecutor) executeShardQDL(query *string, shardNo int) (*mysql.Result, error) {
+	var gno int
+	var nodeConn *NodeConn
+	var err error
+
+	if this.InTransaction {
+		// 如果在事务中则代表是非自动提交
+		gno, nodeConn, err = this.connMgr.GetWriteConnByShard(shardNo, false)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		gno, nodeConn, err = this.connMgr.GetReadConnByShard(shardNo)
+		if err != nil {
+			return nil, err
+		}
+		defer this.connMgr.CloseReadConnByGno(gno)
+	}
+	if err = nodeConn.ReInitUseDB(this.DB); err != nil {
+		return nil, err
+	}
+
+	return nodeConn.Execute(*query)
+}
+
+// 实行SELECT类型语句
+func (this *MySQLExecutor) executeQDL(query *string) (*mysql.Result, error) {
+	var gno int
+	var nodeConn *NodeConn
+	var err error
+
+	if this.InTransaction {
+		// 如果在事务中则代表是非自动提交
+		gno, nodeConn, err = this.connMgr.GetWriteConnByRand(false)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		gno, nodeConn, err = this.connMgr.GetReadConnByRand()
+		if err != nil {
+			return nil, err
+		}
+		defer this.connMgr.CloseReadConnByGno(gno)
+	}
+
+	if err = nodeConn.ReInitUseDB(this.DB); err != nil {
+		return nil, err
+	}
+
+	return nodeConn.Execute(*query)
+}
+
+// 指定分库分表DML语句
+func (this *MySQLExecutor) executeShardDML(query *string, shardNo int) (*mysql.Result, error) {
+	var gno int
+	var nodeConn *NodeConn
+	var err error
+
+	if this.InTransaction {
+		// 如果在事务中则代表是非自动提交
+		gno, nodeConn, err = this.connMgr.GetWriteConnByShard(shardNo, false)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		gno, nodeConn, err = this.connMgr.GetWriteConnByShard(shardNo, true)
+		if err != nil {
+			return nil, err
+		}
+		defer this.connMgr.CloseWriteConnByGno(gno)
+	}
+
+	if err = nodeConn.ReInitUseDB(this.DB); err != nil {
+		return nil, err
+	}
+
+	return nodeConn.Execute(*query)
+}
+
+// 指定非分库分表 DML 语句
+func (this *MySQLExecutor) executeDML(query *string) (*mysql.Result, error) {
+	var gno int
+	var nodeConn *NodeConn
+	var err error
+
+	if this.InTransaction {
+		gno, nodeConn, err = this.connMgr.GetWriteConnByRand(false)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		gno, nodeConn, err = this.connMgr.GetWriteConnByRand(true)
+		if err != nil {
+			return nil, err
+		}
+		defer this.connMgr.CloseWriteConnByGno(gno)
+	}
+
+	if err = nodeConn.ReInitUseDB(this.DB); err != nil {
+		return nil, err
+	}
+
+	return nodeConn.Execute(*query)
 }
 
 // 处理SQL语句
@@ -75,10 +196,13 @@ func (this *MySQLExecutor) HandleQuery(query *string) (*mysql.Result, error) {
 	case *ast.LoadDataStmt:
 		return nil, fmt.Errorf("Error: 不支持(Load)加载数据, LoadDataStmt. %s", *query)
 	case *ast.InsertStmt:
+		this.setIntransaction() // 设置在事务中
 		return this.doInsertStmt(query, stmt)
 	case *ast.DeleteStmt:
+		this.setIntransaction() // 设置在事务中
 		return this.doDeleteStmt(query, stmt)
 	case *ast.UpdateStmt:
+		this.setIntransaction() // 设置在事务中
 		return this.doUpdateStmt(query, stmt)
 	case *ast.ShowStmt:
 		return nil, fmt.Errorf("Error: 不支持(show)操作, ShowStmt. %s", *query)
@@ -140,6 +264,9 @@ func (this *MySQLExecutor) UseDB(dbName *string) error {
 	// 如果当前已经是 use db, 不需要链接数据库操作
 	if strings.TrimSpace(*dbName) == "" {
 		return mysql.NewDefaultError(mysql.ER_NO_DB_ERROR)
+	} else if strings.TrimSpace(*dbName) == "__$$__init__$$__" {
+		this.DB = ""
+		return nil
 	}
 
 	if this.DB == *dbName {
@@ -150,17 +277,10 @@ func (this *MySQLExecutor) UseDB(dbName *string) error {
 	if err != nil {
 		return err
 	}
-	defer this.connMgr.CloseConnByGno(gno)
+	defer this.connMgr.CloseReadConnByGno(gno)
 
-	// 指定变换当前数据库
-	rs, err := nodeConn.Conn.Execute(fmt.Sprintf("SHOW DATABASES LIKE '%s'", dbName))
-	if err != nil {
+	if err := nodeConn.ReInitUseDB(*dbName); err != nil {
 		return err
-	}
-
-	// 指定的数据库不存在
-	if len(rs.RowDatas) == 0 {
-		return mysql.NewDefaultError(mysql.ER_BAD_DB_ERROR, dbName)
 	}
 
 	// 将当前数据库变成 use的数据库
@@ -181,8 +301,10 @@ func (this *MySQLExecutor) doSelectStmt(query *string, stmt *ast.SelectStmt) (*m
 	if len(vst.VisitorStmtMap) != 0 { // 是分库分表
 		// 获取分表的字段并且计算所在的shard
 		var computShardNoOk bool
+		var shardNo int
 		for _, visitorStmt := range vst.VisitorStmtMap {
-			if shardNo, ok := visitorStmt.GetShardNo(this.ctx.ShardAlgorithm); ok { // 是分表就执行sql
+			var ok bool
+			if shardNo, ok = visitorStmt.GetShardNo(this.ctx.ShardAlgorithm); ok { // 是分表就执行sql
 				var sb strings.Builder
 				if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
 					return nil, fmt.Errorf("SELECT (shard) 从写SQL失败. %s", err.Error())
@@ -195,15 +317,16 @@ func (this *MySQLExecutor) doSelectStmt(query *string, stmt *ast.SelectStmt) (*m
 		if !computShardNoOk { // 计算分片好失败
 			return nil, fmt.Errorf("SELECT (shard) 无法从分表字段中计算出(分片号), 请检查提供的字段是否完整.")
 		}
+		return this.executeShardQDL(&sqlStr, shardNo)
 	} else { // 非分库分表的情况
 		var sb strings.Builder
 		if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
 			return nil, fmt.Errorf("SELECT (非shard) 从写SQL失败. %s", err.Error())
 		}
 		sqlStr = fmt.Sprintf(sb.String())
-	}
 
-	fmt.Println("最终需要执行的sql:", sqlStr)
+		return this.executeQDL(&sqlStr)
+	}
 
 	return nil, nil
 }
@@ -243,8 +366,10 @@ func (this *MySQLExecutor) doInsertSelectStmt(query *string, stmt *ast.InsertStm
 	if len(vst.VisitorStmtMap) != 0 { // 是分库分表
 		// 获取分表的字段并且计算所在的shard
 		var computShardNoOk bool
+		var shardNo int
 		for _, visitorStmt := range vst.VisitorStmtMap {
-			if shardNo, ok := visitorStmt.GetShardNo(this.ctx.ShardAlgorithm); ok { // 是分表就执行sql
+			var ok bool
+			if shardNo, ok = visitorStmt.GetShardNo(this.ctx.ShardAlgorithm); ok { // 是分表就执行sql
 				var sb strings.Builder
 				if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
 					return nil, fmt.Errorf("INSERT INTO SELECT (shard) 从写SQL失败. %s", err.Error())
@@ -257,15 +382,16 @@ func (this *MySQLExecutor) doInsertSelectStmt(query *string, stmt *ast.InsertStm
 		if !computShardNoOk { // 计算分片好失败
 			return nil, fmt.Errorf("INSERT INTO SELECT (shard) 无法从分表字段中计算出(分片号), 请检查提供的字段是否完整.")
 		}
+		return this.executeShardDML(&sqlStr, shardNo)
 	} else { // 非分库分表的情况
 		var sb strings.Builder
 		if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
 			return nil, fmt.Errorf("INSERT INTO SELECT (非shard) 从写SQL失败. %s", err.Error())
 		}
 		sqlStr = fmt.Sprintf(sb.String())
+		return this.executeDML(&sqlStr)
 	}
 
-	fmt.Println("最终需要执行的sql:", sqlStr)
 	return nil, nil
 }
 
@@ -276,32 +402,64 @@ func (this *MySQLExecutor) doInsertValuesStmt(query *string, stmt *ast.InsertStm
 		return nil, fmt.Errorf("INSERT INTO VALUES (非shard) 从写SQL失败. %s", err.Error())
 	}
 	sqlStr := fmt.Sprintf(sb.String())
-	fmt.Println("最终需要执行的sql:", sqlStr)
 
-	return nil, nil
+	return this.executeDML(&sqlStr)
 }
 
 // 处理 分库分表的 insert into 语句
 func (this *MySQLExecutor) doInsertValuesStmtShard(query *string, stmt *ast.InsertStmt, vst *visitor.InsertValuesVisitor) (*mysql.Result, error) {
 	tmpLists := vst.ValueList
-	for i, row := range tmpLists {
-		newLists := make([][]ast.ExprNode, 1)
-		newLists[0] = row
-		stmt.Lists = newLists
+	insertCnt := uint64(len(tmpLists))
+	if insertCnt > 1 { // 有多条 insert 的时候需要执行 begin commit 操作
+		this.doBegin(query, nil)
+		for i, row := range tmpLists {
+			newLists := make([][]ast.ExprNode, 1)
+			newLists[0] = row
+			stmt.Lists = newLists
 
-		vst.SetListValueToShardTable(i) // 设置分片使用字段的值
+			vst.SetListValueToShardTable(i) // 设置分片使用字段的值
 
-		shardNo, ok := vst.CurrVisitorStmt.GetShardNo(this.ctx.ShardAlgorithm)
-		if !ok { // 是分表就执行sql
-			return nil, fmt.Errorf("INSERT INTO VALUES (shard) 无法从分表字段中计算出(分片号), 请检查提供的字段是否完整.")
+			shardNo, ok := vst.CurrVisitorStmt.GetShardNo(this.ctx.ShardAlgorithm)
+			if !ok { // 是分表就执行sql
+				this.doRollbackStmt(query, nil)
+				return nil, fmt.Errorf("INSERT INTO VALUES (shard) 无法从分表字段中计算出(分片号), 请检查提供的字段是否完整.")
+			}
+
+			var sb strings.Builder
+			if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
+				this.doRollbackStmt(query, nil)
+				return nil, fmt.Errorf("INSERT INTO VALUES (shard) 从写SQL失败. %s", err.Error())
+			}
+			sqlStr := fmt.Sprintf(sb.String(), shardNo)
+			if _, err := this.executeShardDML(&sqlStr, shardNo); err != nil {
+				this.doRollbackStmt(query, nil)
+				return nil, err
+			}
 		}
+		rs, err := this.doCommitStmt(query, nil)
+		rs = new(mysql.Result)
+		rs.AffectedRows = insertCnt
+		return rs, err
+	} else {
+		for i, row := range tmpLists {
+			newLists := make([][]ast.ExprNode, 1)
+			newLists[0] = row
+			stmt.Lists = newLists
 
-		var sb strings.Builder
-		if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
-			return nil, fmt.Errorf("INSERT INTO VALUES (shard) 从写SQL失败. %s", err.Error())
+			vst.SetListValueToShardTable(i) // 设置分片使用字段的值
+
+			shardNo, ok := vst.CurrVisitorStmt.GetShardNo(this.ctx.ShardAlgorithm)
+			if !ok { // 是分表就执行sql
+				return nil, fmt.Errorf("INSERT INTO VALUES (shard) 无法从分表字段中计算出(分片号), 请检查提供的字段是否完整.")
+			}
+
+			var sb strings.Builder
+			if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
+				return nil, fmt.Errorf("INSERT INTO VALUES (shard) 从写SQL失败. %s", err.Error())
+			}
+			sqlStr := fmt.Sprintf(sb.String(), shardNo)
+			return this.executeShardDML(&sqlStr, shardNo)
 		}
-		sqlStr := fmt.Sprintf(sb.String(), shardNo)
-		fmt.Println("最终需要执行的sql:", sqlStr)
 	}
 	return nil, nil
 }
@@ -319,8 +477,10 @@ func (this *MySQLExecutor) doDeleteStmt(query *string, stmt *ast.DeleteStmt) (*m
 	if len(vst.VisitorStmtMap) != 0 { // 是分库分表
 		// 获取分表的字段并且计算所在的shard
 		var computShardNoOk bool
+		var shardNo int
 		for _, visitorStmt := range vst.VisitorStmtMap {
-			if shardNo, ok := visitorStmt.GetShardNo(this.ctx.ShardAlgorithm); ok { // 是分表就执行sql
+			var ok bool
+			if shardNo, ok = visitorStmt.GetShardNo(this.ctx.ShardAlgorithm); ok { // 是分表就执行sql
 				var sb strings.Builder
 				if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
 					return nil, fmt.Errorf("DELETE FROM (shard) 从写SQL失败. %s", err.Error())
@@ -333,15 +493,15 @@ func (this *MySQLExecutor) doDeleteStmt(query *string, stmt *ast.DeleteStmt) (*m
 		if !computShardNoOk { // 计算分片好失败
 			return nil, fmt.Errorf("DELETE FROM (shard) 无法从分表字段中计算出(分片号), 请检查提供的字段是否完整.")
 		}
+		return this.executeShardDML(&sqlStr, shardNo)
 	} else { // 非分库分表的情况
 		var sb strings.Builder
 		if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
 			return nil, fmt.Errorf("DELETE FROM (非shard) 从写SQL失败. %s", err.Error())
 		}
 		sqlStr = fmt.Sprintf(sb.String())
+		return this.executeDML(&sqlStr)
 	}
-
-	fmt.Println("最终需要执行的sql:", sqlStr)
 
 	return nil, nil
 }
@@ -359,8 +519,10 @@ func (this *MySQLExecutor) doUpdateStmt(query *string, stmt *ast.UpdateStmt) (*m
 	if len(vst.VisitorStmtMap) != 0 { // 是分库分表
 		// 获取分表的字段并且计算所在的shard
 		var computShardNoOk bool
+		var shardNo int
 		for _, visitorStmt := range vst.VisitorStmtMap {
-			if shardNo, ok := visitorStmt.GetShardNo(this.ctx.ShardAlgorithm); ok { // 是分表就执行sql
+			var ok bool
+			if shardNo, ok = visitorStmt.GetShardNo(this.ctx.ShardAlgorithm); ok { // 是分表就执行sql
 				var sb strings.Builder
 				if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
 					return nil, fmt.Errorf("UPDATE (shard) 从写SQL失败. %s", err.Error())
@@ -373,31 +535,44 @@ func (this *MySQLExecutor) doUpdateStmt(query *string, stmt *ast.UpdateStmt) (*m
 		if !computShardNoOk { // 计算分片好失败
 			return nil, fmt.Errorf("UPDATE (shard) 无法从分表字段中计算出(分片号), 请检查提供的字段是否完整.")
 		}
+		return this.executeShardDML(&sqlStr, shardNo)
 	} else { // 非分库分表的情况
 		var sb strings.Builder
 		if err := stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)); err != nil {
 			return nil, fmt.Errorf("UPDATE (非shard) 从写SQL失败. %s", err.Error())
 		}
 		sqlStr = fmt.Sprintf(sb.String())
+		return this.executeDML(&sqlStr)
 	}
-
-	fmt.Println("最终需要执行的sql:", sqlStr)
 
 	return nil, nil
 }
 
 // 执行 commit
 func (this *MySQLExecutor) doCommitStmt(query *string, stmt *ast.CommitStmt) (*mysql.Result, error) {
+	defer this.connMgr.Close()
+
+	this.InTransaction = false
+	if err := this.connMgr.WriteConnCommit(); err != nil {
+		return nil, err
+	}
 	return nil, nil
 }
 
 // 执行 rollback
 func (this *MySQLExecutor) doRollbackStmt(query *string, stmt *ast.RollbackStmt) (*mysql.Result, error) {
+	defer this.connMgr.Close()
+
+	this.InTransaction = false
+	if err := this.connMgr.WriteConnRollback(); err != nil {
+		return nil, err
+	}
 	return nil, nil
 }
 
 // 执行 Begin
 func (this *MySQLExecutor) doBegin(query *string, stmt *ast.BeginStmt) (*mysql.Result, error) {
+	this.InTransaction = true
 	return nil, nil
 }
 
@@ -420,7 +595,10 @@ func (this *MySQLExecutor) doSetStmt(query *string, stmt *ast.SetStmt) (*mysql.R
 				this.AutoCommit = false
 			} else {
 				this.AutoCommit = true
-				this.connMgr.Commit()
+				if err := this.connMgr.WriteConnCommit(); err != nil {
+					seelog.Error(err.Error())
+				}
+				this.InTransaction = false
 			}
 		default:
 			return nil, fmt.Errorf("不支持 set %s 语句", variable.Name)

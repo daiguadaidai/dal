@@ -8,10 +8,6 @@ import (
 	"strings"
 )
 
-const (
-	RAND_GNO = -1
-)
-
 type DalHandler struct {
 	ctx   *dal_context.DalContext
 	mExec *executor.MySQLExecutor
@@ -29,10 +25,9 @@ func (this *DalHandler) UseDB(dbName string) error {
 }
 
 func (this *DalHandler) HandleQuery(query string) (*mysql.Result, error) {
-	fmt.Println(query)
+	// fmt.Println(query)
 	// 将带有百分号替换成想 两个百分号
 	newQuery := strings.ReplaceAll(query, "%", "%%")
-	fmt.Println(newQuery)
 	return this.mExec.HandleQuery(&newQuery)
 }
 

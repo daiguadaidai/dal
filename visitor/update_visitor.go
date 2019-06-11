@@ -78,7 +78,7 @@ func (this *UpdateVisitor) Enter(in ast.Node) (out ast.Node, skipChildren bool) 
 	// 增加节点层级
 	this.CurrNodeLevel++
 
-	fmt.Printf("%sEnter: %[2]T, %[2]v, %[2]p\n", utils.GetIntend(this.CurrNodeLevel-1, " ", 4), in)
+	// fmt.Printf("%sEnter: %[2]T, %[2]v, %[2]p\n", utils.GetIntend(this.CurrNodeLevel-1, " ", 4), in)
 
 	switch node := in.(type) {
 	case *ast.UpdateStmt:
@@ -114,7 +114,7 @@ func (this *UpdateVisitor) Leave(in ast.Node) (out ast.Node, ok bool) {
 		return in, false
 	}
 
-	fmt.Printf("%sLeave: %T, %[2]p\n", utils.GetIntend(this.CurrNodeLevel-1, " ", 4), in)
+	// fmt.Printf("%sLeave: %T, %[2]p\n", utils.GetIntend(this.CurrNodeLevel-1, " ", 4), in)
 	switch node := in.(type) {
 	case *ast.UpdateStmt:
 		this.Err = this.leaveUpdateStmt(node)

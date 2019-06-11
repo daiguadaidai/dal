@@ -176,7 +176,7 @@ func TestDalContext_RandGetReadNodeWithDB(t *testing.T) {
 		if err != nil {
 			t.Fatal(err.Error())
 		}
-		groupCountor[group.GNO]++
+		groupCountor[group.Gno]++
 
 		node, err := dalCtx.ClusterInstance.GetReadNodeByShard(shardNo)
 		if err != nil {

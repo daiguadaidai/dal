@@ -30,7 +30,7 @@ func NewInsertValuesVisitor(ctx *dal_context.DalContext) *InsertValuesVisitor {
 
 func (this *InsertValuesVisitor) Enter(in ast.Node) (out ast.Node, skipChildren bool) {
 	this.CurrNodeLevel++
-	fmt.Printf("%sEnter: %[2]T, %[2]v, %[2]p\n", utils.GetIntend(this.CurrNodeLevel-1, " ", 4), in)
+	// fmt.Printf("%sEnter: %[2]T, %[2]v, %[2]p\n", utils.GetIntend(this.CurrNodeLevel-1, " ", 4), in)
 
 	switch node := in.(type) {
 	case *ast.InsertStmt:
@@ -42,7 +42,7 @@ func (this *InsertValuesVisitor) Enter(in ast.Node) (out ast.Node, skipChildren 
 }
 
 func (this *InsertValuesVisitor) Leave(in ast.Node) (out ast.Node, ok bool) {
-	fmt.Printf("%sLeave: %T, %[2]p\n", utils.GetIntend(this.CurrNodeLevel-1, " ", 4), in)
+	// fmt.Printf("%sLeave: %T, %[2]p\n", utils.GetIntend(this.CurrNodeLevel-1, " ", 4), in)
 	this.CurrNodeLevel--
 	return in, true
 }

@@ -63,6 +63,12 @@ func (this *ClusterInstance) GetReadNodeByRand() (int, *MySQLNode, error) {
 	return cluster.GetReadNodeByRand()
 }
 
+// 随机获取一个可写节点
+func (this *ClusterInstance) GetWriteNodeByRand() (int, *MySQLNode, error) {
+	cluster := this.GetClusterByRand()
+	return cluster.GetWriteNodeByRand()
+}
+
 // 通过分片好获取组号
 func (this *ClusterInstance) GetGnoByShard(shardNo int) (int, error) {
 	cluster := this.GetClusterByRand()
@@ -73,4 +79,10 @@ func (this *ClusterInstance) GetGnoByShard(shardNo int) (int, error) {
 func (this *ClusterInstance) GetReadNodeByGno(gno int) (*MySQLNode, error) {
 	cluster := this.GetClusterByRand()
 	return cluster.GetReadNodeByGno(gno)
+}
+
+// 通过 gno 获取写节点
+func (this *ClusterInstance) GetWriteNodeByGno(gno int) (*MySQLNode, error) {
+	cluster := this.GetClusterByRand()
+	return cluster.GetWriteNodeByGno(gno)
 }
